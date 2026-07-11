@@ -17,8 +17,9 @@ metadata:
 
 Before analysis, detect available data sources:
 
-1. **DataForSEO MCP** (premium): Check if `dataforseo_backlinks_summary` tool is available
-2. **Moz API** (free signup): `python3 scripts/backlinks_auth.py --check moz --json`
+1. **Semrush MCP** (premium): Check if the Semrush `backlink_research` tool is available (tool names suffixed `*_research` + `get_report_schema`/`execute_report`). Highest-confidence source.
+2. **DataForSEO MCP** (premium): Check if `dataforseo_backlinks_summary` tool is available
+3. **Moz API** (free signup): `python3 scripts/backlinks_auth.py --check moz --json`
 3. **Bing Webmaster** (free signup): `python3 scripts/backlinks_auth.py --check bing --json`
 4. **Common Crawl** (always available): Domain-level graph with PageRank
 5. **Verification Crawler** (always available): Checks if known backlinks still exist
@@ -216,12 +217,17 @@ the reality is we simply lack data.
 | No backlink data returned | Domain too new or very small | Note: small sites may have <10 backlinks |
 
 **Fallback cascade:**
-1. DataForSEO available? → Use as primary (confidence: 1.0)
-2. Moz configured? → Use for DA/PA/spam/anchors (confidence: 0.85)
-3. Bing configured? → Use for links/competitor comparison (confidence: 0.70)
-4. Always: Common Crawl for domain-level metrics (confidence: 0.50)
-5. Always: Verification crawler for known link checks (confidence: 0.95)
-6. Nothing works? → "Run `/seo backlinks setup` to configure free APIs"
+1. Semrush MCP available? → Use as primary (confidence: 1.0). Delegate to `seo-semrush` for referring domains, anchors, Authority Score, and link growth. Pick the regional `database` matching the client market.
+2. DataForSEO available? → Use as primary (confidence: 1.0)
+3. Moz configured? → Use for DA/PA/spam/anchors (confidence: 0.85)
+4. Bing configured? → Use for links/competitor comparison (confidence: 0.70)
+5. Always: Common Crawl for domain-level metrics (confidence: 0.50)
+6. Always: Verification crawler for known link checks (confidence: 0.95)
+7. Nothing works? → "Run `/seo backlinks setup` to configure free APIs"
+
+When Semrush is available, prefer it over DataForSEO/Moz for referring-domain
+counts, anchor distribution, and competitor gap analysis, and label metrics
+"Semrush (live, <database>, 1.00)".
 
 ## Pre-Delivery Review (MANDATORY)
 

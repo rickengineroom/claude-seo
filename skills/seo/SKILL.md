@@ -231,9 +231,15 @@ The following ship in `extensions/` rather than `skills/` and require a separate
 installer to activate (see each extension's `install.sh`/`install.ps1`):
 
 Of the optional extensions, firecrawl, dataforseo, and image-gen are reachable
-through `/seo` subcommands. Ahrefs, Bing, Profound, SE Ranking, and Unlighthouse
+through `/seo` subcommands. Semrush, Bing, Profound, SE Ranking, and Unlighthouse
 install as standalone skills invoked by their own descriptions. The model
 auto-routes to those triggers, not through `/seo <name>`.
+
+- **seo-semrush** -- Premium keyword + backlink + competitive intelligence via the
+  official Semrush MCP (this project's primary paid data source, replacing Ahrefs).
+  Install via `extensions/semrush/install.sh` (Unix) or `install.ps1` (Windows).
+  Invoke via `/seo semrush <command>` (overview, organic, keywords, competitors,
+  gap, backlinks, trends). Pairs with seo-backlinks for confidence weighting.
 
 - **seo-firecrawl** -- Full-site crawling and site mapping via Firecrawl MCP. Install
   via `extensions/firecrawl/install.sh` (Unix) or `extensions/firecrawl/install.ps1`
@@ -257,6 +263,7 @@ For parallel analysis during audits:
 - `seo-sxo` -- Page-type mismatch, user stories, persona scoring (always in full audits)
 - `seo-drift` -- Baseline comparison (conditional: drift baseline exists for URL)
 - `seo-ecommerce` -- Product schema, marketplace intel (conditional: e-commerce detected)
+- `seo-semrush` -- Keyword metrics, organic/competitor analysis, backlink profile via Semrush MCP (conditional: spawned when the Semrush MCP is connected)
 - `seo-flow` -- FLOW framework prompts (conditional: spawned for content strategy workflows)
 - `seo-dataforseo` -- Live SERP, keyword, backlink, local SEO data (extension, optional)
 - `seo-image-gen` -- SEO image audit and generation plan (extension, optional)
