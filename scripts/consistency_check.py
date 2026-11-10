@@ -21,7 +21,7 @@ reference-graph checks that no other tool covers:
    reported as warnings, never errors.
 
 Usage:
-    python3 scripts/consistency_check.py [--json] [--strict]
+    py scripts/consistency_check.py [--json] [--strict]
 
 Exit codes: 0 = no errors (warnings allowed unless --strict), 1 = errors found.
 """

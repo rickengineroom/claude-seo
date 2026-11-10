@@ -9,7 +9,7 @@ Checks:
 4. Output directory exists or can be created
 
 Usage:
-    python3 validate_setup.py
+    py validate_setup.py
 """
 
 import argparse
