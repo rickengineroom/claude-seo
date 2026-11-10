@@ -1,7 +1,7 @@
 # Google Search Console Performance Report
 
 **Property:** {property}
-**Date Range:** {start_date} — {end_date}
+**Date Range:** {start_date} to {end_date}
 **Search Type:** {search_type}
 
 ## Summary
@@ -41,4 +41,5 @@ These queries rank on page 1 but below position 3. A small ranking improvement c
 
 ---
 *Data freshness: Search Analytics has a 2-3 day lag. Data available for ~16 months.*
+*If this report overlaps 2025-05-13 to 2026-04-27, impressions, CTR, and average position require caution due to the confirmed GSC impressions logging error. Clicks were not affected and affected metrics were not backfilled.*
 *Generated {timestamp} via Google Search Console API.*

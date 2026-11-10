@@ -11,7 +11,7 @@
 | CrUX API | 150 QPM (shared) | Unlimited | Free | API Key | Per project |
 | CrUX History API | 150 QPM (shared with CrUX) | Unlimited | Free | API Key | Per project |
 | Indexing API | 380 RPM total, 180 read/min | 200 publish/day | Free | Service Account | Per project |
-| GA4 Data API | 10 concurrent | ~25K tokens/day | Free | Service Account | Per property/project |
+| GA4 Data API | 10 concurrent (50 on 360) | 200,000 tokens/property/day (2M on 360) | Free | Service Account | Per property/project |
 | Knowledge Graph | -- | 100,000 QPD | Free | API Key | Per project |
 | Custom Search | -- | 10,000 QPD max | 100 free, $5/1K | API Key | Per project |
 | Web Risk | 6,000 QPM | 100K/month | Free tier | API Key | Per project |
@@ -39,8 +39,8 @@ Add random jitter (0-500ms) to each wait to avoid thundering herd.
 |------|---------|------------|--------|
 | 400 | Bad request | All | Check URL format, request body |
 | 401 | Unauthorized | Service Account APIs | Refresh credentials |
-| 403 | Forbidden | GSC, GA4, Indexing | Check permissions (service account access) |
-| 404 | Not found | CrUX, GSC | Insufficient traffic (CrUX) or invalid property (GSC) |
+| 403 | Forbidden | GSC, GA4, Indexing | Read the ErrorInfo `reason` and `consumer` first: SERVICE_DISABLED = API off in the consumer project, USER_PROJECT_DENIED = quota project, ACCESS_TOKEN_SCOPE_INSUFFICIENT = scope; only a plain PERMISSION_DENIED means property access |
+| 404 | Not found | CrUX, GSC | CrUX: no record for that exact key; try the www/non-www variant and the origin before calling it insufficient traffic. GSC: invalid property string |
 | 429 | Rate limited | All | Backoff and retry. Check Retry-After header. |
 | 500 | Server error | All | Retry with backoff |
 | 503 | Service unavailable | All | Retry with backoff |
@@ -55,9 +55,9 @@ GA4 uses a token system rather than simple request counts:
 - Simple 1-dimension, 1-metric report: ~1-5 tokens
 - Complex multi-dimension, multi-metric: ~10-100 tokens
 - Set `returnPropertyQuota: true` to monitor consumption
-- Daily limit: 25,000 tokens per property per project
-- Hourly limit: 5,000 tokens per property per project
-- Concurrent: max 10 simultaneous requests
+- Daily limit: 200,000 tokens per property (2,000,000 on Analytics 360)
+- Hourly limit: 40,000 tokens per property; 14,000 per project per property
+- Concurrent: max 10 simultaneous requests per property (50 on 360)
 
 ## CrUX Shared Quota
 
@@ -69,7 +69,7 @@ The CrUX API and CrUX History API share the same 150 QPM quota per project. Plan
 - PSI, CrUX, CrUX History (API key, unlimited free)
 - GSC (service account, 30M QPD)
 - Indexing API (service account, 200 publish/day)
-- GA4 Data API (service account, 25K tokens/day)
+- GA4 Data API (service account, 200,000 tokens/property/day on Standard)
 - Knowledge Graph (API key, 100K QPD)
 
 Only Custom Search and Web Risk have paid tiers at high volumes.

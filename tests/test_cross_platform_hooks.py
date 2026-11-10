@@ -11,7 +11,6 @@ from pathlib import Path
 
 import pytest
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 HOOKS_JSON = REPO_ROOT / "hooks" / "hooks.json"
 HOOK_LAUNCHER = REPO_ROOT / "hooks" / "run-python-hook.js"
@@ -33,6 +32,9 @@ def test_schema_hook_uses_exec_form_args_and_tool_input_placeholder() -> None:
     assert handler["args"][0] == "${CLAUDE_PLUGIN_ROOT}/hooks/run-python-hook.js"
     assert handler["args"][1] == "${CLAUDE_PLUGIN_ROOT}/hooks/validate-schema.py"
     assert handler["args"][2] == "${tool_input.file_path}"
+    # Seconds. The hook runs one local Python validator; a hung interpreter
+    # probe must not stall every Edit or Write for the default 10 minutes.
+    assert handler["timeout"] == 30
     assert "$FILE_PATH" not in serialized
     assert "$" not in handler["command"]
     assert handler["command"] != "sh"

@@ -5,16 +5,15 @@
     "name": "AgriciDaniel"
   },
   "metadata": {
-    "description": "Comprehensive SEO analysis plugin for Claude Code. 25 sub-skills and 18 sub-agents, plus 8 optional MCP extensions (DataForSEO, Firecrawl, Banana, Ahrefs, SE Ranking, Profound, Bing Webmaster, Unlighthouse). v2 adds shared headless rendering, QRG-aligned content quality gates, LCP subparts via CrUX, IndexNow, four Schema.org generators, AI Share-of-Voice tracking, parasite-SEO risk scanning, multi-platform portability, and a hardened SSRF + DNS-rebinding safety layer."
+    "description": "Comprehensive SEO analysis plugin for Claude Code. 26 sub-skills and 19 sub-agents, plus 9 optional MCP extensions for live data. v2.5.0 fixes Claude Desktop installs and hardens Google sign-in, page rendering and agent prompts; v2.4.2 added seo-cockpit (a mods companion: spend guard, live audit band, and a visual cockpit) and Google sign-in through your own gcloud account; v2.4.1 brought Google guidance current through 2026-09-28; v2.4.0 added /seo agentic for agent readiness (Lighthouse Agentic Browsing, WebMCP, AI agent access)."
   },
   "plugins": [
     {
       "name": "claude-seo",
       "source": "./",
-      "description": "Comprehensive SEO analysis plugin for Claude Code. 25 sub-skills (21 core + 1 orchestrator + 1 framework integration + 2 extension mirrors) and 18 sub-agents (15 core + 1 framework integration + 2 extension mirrors), plus 8 optional MCP extensions. v2 adds shared headless rendering across every fetching agent, QRG-aligned content quality gates, LCP subparts via CrUX, IndexNow submission, four Schema.org generators (Reservation / OrderAction / DiscussionForumPosting / ProfilePage), AI Share-of-Voice tracking, parasite-SEO risk scanning, and multi-platform portability.",
+      "description": "Comprehensive SEO analysis plugin for Claude Code. 26 sub-skills and 19 sub-agents, plus 9 optional MCP extensions. v2.5.0 fixes Claude Desktop installs and hardens Google sign-in, page rendering and agent prompts; v2.4.2 added the seo-cockpit companion and gcloud sign-in; v2.4.1 brought Google guidance current through 2026-09-28; v2.4.0 added /seo agentic for agent readiness (Lighthouse Agentic Browsing, WebMCP, AI agent access).",
       "author": {
         "name": "AgriciDaniel",
-        "email": "agricidaniel@gmail.com",
         "url": "https://github.com/AgriciDaniel"
       },
       "category": "marketing",
@@ -57,6 +56,30 @@
         "ssrf-safe-fetchers",
         "ai-citation-optimization",
         "synthesis-framework"
+      ]
+    },
+    {
+      "name": "seo-cockpit",
+      "source": {
+        "source": "git-subdir",
+        "url": "AgriciDaniel/claude-seo",
+        "path": "plugins/seo-cockpit",
+        "ref": "seo-cockpit",
+        "sha": "cf97b4785f4241b9367d654c60c7207dc3afcf68"
+      },
+      "description": "Optional mods companion for claude-seo (needs Claude Code 2.1.287+). A spend guard that holds paid SEO API calls against the claude-seo budget, and zero-token /seo-spend and /seo-doctor commands.",
+      "author": {
+        "name": "AgriciDaniel",
+        "url": "https://github.com/AgriciDaniel"
+      },
+      "category": "marketing",
+      "homepage": "https://github.com/AgriciDaniel/claude-seo/tree/seo-cockpit/plugins/seo-cockpit",
+      "keywords": [
+        "seo",
+        "mods",
+        "cost-guard",
+        "dataforseo",
+        "budget"
       ]
     }
   ]

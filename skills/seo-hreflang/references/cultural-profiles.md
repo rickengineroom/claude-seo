@@ -69,6 +69,23 @@ Original concept: Chris Muller (Pro Hub Challenge)
 | Brand Substitution | Amazon → Rakuten, Google Shopping → Yahoo! Shopping Japan |
 | Word Contraction | -10-25% vs English (Japanese is more compact) |
 
+## Indonesian (id-ID)
+
+| Dimension | Guideline |
+|-----------|-----------|
+| hreflang code | `id` or `id-ID`. Never `in` (withdrawn ISO 639 code) or `ind` (ISO 639-2). |
+| Formality | "Anda" (formal you) for most business copy; "kamu" only for youth or casual lifestyle brands. Check what ranking competitors use. |
+| CTA Style | Polite and benefit-led. Check whether the top 10 for the query uses WhatsApp or chat as the main contact route before recommending a form. |
+| Trust Signals | Local business identity (NIB), Indonesian address and +62 phone, halal certification where the product category requires it, marketplace store links and ratings. |
+| Legal | UU PDP (Law No. 27 of 2022 on Personal Data Protection). Consumer protection law (UU 8/1999). Verify current obligations with a local adviser; do not state them as legal advice. |
+| Number Format | 1.234.567,89 (dot for thousands, comma for decimal; CLDR id-ID) |
+| Date Format | DD/MM/YYYY (CLDR short form drops leading zeros: 14/4/2026); long form "14 April 2026" |
+| Currency | IDR, written "Rp" before the amount, usually without decimals (CLDR: Rp 1.234.568) |
+| Payment Signals | Bank transfer / virtual account, e-wallets, QRIS, marketplace checkout. List what the client actually accepts. |
+| Marketplace Context | Shopee, Tokopedia, Lazada and similar marketplaces often rank for product queries; record them as marketplace intent, not as noise. |
+| Search Market | Semrush database `id` (desktop) or `mobile-id`; Search Console country `IDN`. |
+| Word Expansion | Indonesian strings usually run longer than English; measure on real copy rather than assuming a ratio. |
+
 ## Default Profile (Unlisted Languages)
 
 When analyzing a locale without a pre-built profile above:

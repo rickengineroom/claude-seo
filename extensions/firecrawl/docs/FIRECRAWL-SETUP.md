@@ -1,25 +1,30 @@
 # Firecrawl Setup Guide
 
-## 1. Get Your API Key
+## 1. Install and sign in to the CLI (recommended)
 
-1. Go to [firecrawl.dev/app/sign-up](https://www.firecrawl.dev/app/sign-up)
-2. Create a free account (500 credits/month included)
-3. Navigate to **API Keys** in the dashboard
-4. Copy your API key (starts with `fc-`)
+```bash
+npm install -g firecrawl-cli     # tested with 1.26.3
+firecrawl login --browser        # browser sign-in; the key is stored by the CLI, not in this repo
+firecrawl --status               # signed in, team, credits left
+firecrawl credits --json         # remaining credits, plan credits, billing period
+```
 
-## 2. Run the Installer
+Then try:
 
-The installer handles everything automatically:
+```
+/seo firecrawl map https://example.com
+```
+
+## 2. MCP server (alternative)
+
+The installer in this folder configures the Firecrawl MCP server instead:
 
 ```bash
 ./extensions/firecrawl/install.sh
 ```
 
-It will prompt for your API key and configure the MCP server.
-
-## 3. Manual MCP Configuration
-
-If the installer fails, add this to `~/.claude/settings.json` manually:
+It prompts for an API key (starts with `fc-`, from the Firecrawl dashboard under
+API Keys). If the installer fails, add this to `~/.claude.json` manually:
 
 ```json
 {
@@ -35,25 +40,21 @@ If the installer fails, add this to `~/.claude/settings.json` manually:
 }
 ```
 
-## 4. Verify Installation
+Restart Claude Code to load the MCP tools.
 
-Start Claude Code and try:
+## 3. Understanding Credits
 
-```
-/seo firecrawl map https://example.com
-```
-
-You should see a list of discovered URLs. If you get a "tool not available" error, restart Claude Code to reload MCP servers.
-
-## 5. Understanding Credits
+Measured with firecrawl-cli 1.26.3 on 2026-11-10 (credits read before and after):
 
 | Operation | Credits Used |
 |-----------|-------------|
-| `crawl` | 1 per page crawled |
-| `scrape` | 1 per page |
-| `map` | 0.5 per URL discovered |
-| `search` | 1 per result returned |
+| `map` | 1 per call |
+| `scrape` | 1 per page; PDFs 1 per parsed page (cap with `--max-pages`) |
+| `crawl` | At least 1 per page crawled; always set `--limit` |
+| `search` | 2 for a 2-result web search; `--scrape` adds the scrape cost per result |
 
-**Free tier**: 500 credits/month resets on your billing date.
+Plan allowances and reset dates differ by account: read them from
+`firecrawl credits --json` rather than assuming a figure.
 
-**Tip**: Use `map` first (cheap) to see how many pages a site has, then decide how many to `crawl` (more expensive).
+**Tip**: single pages are free through WebFetch or `render_page.py`. Use `map` first
+(one credit) to see how many pages a site has, then decide how many to `crawl`.

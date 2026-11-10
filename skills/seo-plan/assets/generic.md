@@ -50,7 +50,7 @@ This template applies to businesses that don't fit neatly into SaaS, local servi
 | About | Organization, AboutPage |
 | Contact | ContactPage |
 | Blog | Article, BlogPosting |
-| FAQ | QAPage for genuine Q&A; FAQPage no longer yields rich results (retired May 2026) but still aids AI citation |
+| FAQ | QAPage for genuine Q&A; FAQPage no longer yields rich results (retired May 2026); keep FAQPage only when useful for on-page content structure |
 | Product/Service | Product or Service |
 
 ## Content Quality Standards
@@ -87,31 +87,28 @@ This template applies to businesses that don't fit neatly into SaaS, local servi
 - [ ] Redirect chains eliminated
 - [ ] Image optimization (WebP, lazy loading)
 
-## Content Priorities
+## Build Dependencies
 
-### Phase 1: Foundation (weeks 1-4)
-1. Homepage optimization
-2. Core product/service pages
-3. About and contact pages
-4. Basic schema implementation
+Order by dependency, not by date. Ordering, effort and timing are set after
+scope approval.
 
-### Phase 2: Expansion (weeks 5-12)
-1. Blog launch (2-4 posts/month)
-2. FAQ page
-3. Additional product/service pages
-4. Internal linking audit
+### Needed first (other pages depend on them)
+1. Homepage
+2. Core product/service pages (the hubs)
+3. About and contact pages (entity and trust information)
+4. Schema for those page types
 
-### Phase 3: Growth (weeks 13-24)
-1. Consistent content publishing
-2. Link building outreach
-3. GEO optimization
-4. Performance optimization
+### Built on the hubs
+1. Supporting articles or resources that answer questions the hubs cannot,
+   only where the foundation keyword map shows demand
+2. Additional product/service pages
+3. Internal links from supporting pages back to their hub
 
-### Phase 4: Authority (months 7-12)
-1. Thought leadership content
-2. Original research
-3. PR and media mentions
-4. Advanced schema
+### Ongoing work (scoped separately)
+1. Link acquisition
+2. AI search readiness
+3. Performance
+4. Original research and PR
 
 ## Key Metrics to Track
 
@@ -130,7 +127,7 @@ Adjust this template based on:
 2. **Geographic Scope**: Local, national, or international
 3. **Content Type**: Product-focused vs content-heavy
 4. **Competition Level**: Niche vs competitive market
-5. **Resources**: Budget and team capacity
+5. **Content capacity**: how many pages the business can populate with unique content
 
 ## Generative Engine Optimization (GEO) Checklist
 

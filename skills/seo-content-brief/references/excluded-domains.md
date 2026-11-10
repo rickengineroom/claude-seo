@@ -1,7 +1,9 @@
 <!-- Updated: 2026-04-17 -->
 # Excluded Competitor Domains
 
-When analysing SERPs for competitor scoring, filter out these domains. They are not real business competitors even when they rank for the target keyword.
+When scoring competitors, filter out these domains. They are not real business competitors even when they rank for the target keyword.
+
+**Order matters:** classify every top-10 result and judge intent first, then filter. Forums (Reddit, Quora, Whirlpool), video (YouTube), marketplaces (Amazon, eBay, Etsy), directories and category URLs are intent evidence: a result page full of them tells you searchers want first-hand opinions, demonstrations or offer comparison. This list only removes them from the competitor scoring table.
 
 ## Encyclopedias and Reference Sites
 - wikipedia.org, britannica.com, investopedia.com, dictionary.com, merriam-webster.com, webmd.com, healthline.com, mayoclinic.org
@@ -50,7 +52,9 @@ When analysing SERPs for competitor scoring, filter out these domains. They are 
 
 ## URL Path Patterns to Exclude
 
-Even on otherwise valid competitor domains, exclude URLs containing:
+Even on otherwise valid competitor domains, exclude these from competitor scoring
+(after intent classification). Keep `/category/` and `/collections/` URLs when the
+brief is for a category or collection page: there they are the real competitors.
 - `/tag/`, `/tags/`, `/author/`, `/category/`, `/archive/`
 - `/feed/`, `/rss/`, `/wp-json/`, `/wp-admin/`
 - `/login`, `/signup`, `/register`, `/cart`, `/checkout`
@@ -59,7 +63,8 @@ Even on otherwise valid competitor domains, exclude URLs containing:
 
 ## How to Use This List
 
-1. After fetching SERP results, check each URL against these domains
-2. Remove any matches before scoring competitors
-3. If fewer than 3 real competitors remain, note the thin competitive landscape
-4. Never count a filtered domain in the competitor analysis table
+1. Fetch the ranked top 10 for the market and classify every result's page type
+2. Record the intent labels and the share of forum, video, marketplace and directory results
+3. Then check each URL against these domains and remove matches from competitor scoring only
+4. If fewer than 3 real competitors remain, report the result-page make-up as the finding
+5. Never count a filtered domain in the competitor analysis table

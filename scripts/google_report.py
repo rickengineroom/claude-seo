@@ -20,39 +20,131 @@ import sys
 from datetime import datetime
 from html import escape
 from pathlib import Path
-from typing import Optional
 
 try:
     import matplotlib
     matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
     import matplotlib.patches as mpatches
+    import matplotlib.pyplot as plt
     import numpy as np
-except ImportError:
-    print("Error: matplotlib required. Install with: pip install matplotlib", file=sys.stderr)
-    sys.exit(1)
+    _CHART_IMPORT_ERROR = None
+except (ImportError, OSError, RuntimeError) as exc:
+    matplotlib = plt = mpatches = np = None
+    _CHART_IMPORT_ERROR = exc
 
 try:
     from weasyprint import HTML
-except ImportError:
-    print("Error: weasyprint required. Install with: pip install weasyprint", file=sys.stderr)
-    sys.exit(1)
+    _PDF_IMPORT_ERROR = None
+except (ImportError, OSError) as exc:
+    HTML = None
+    _PDF_IMPORT_ERROR = exc
 
 
-# ─── Brand Colors ────────────────────────────────────────────────────────────
+# ─── Brand Tokens (Engine Room) ──────────────────────────────────────────────
+#
+# Paper #F2F2F2, ink #0F0F0F, single accent #FF5722, white cards with hairline
+# borders and 2-4px corners. Status colours (pass / warn / fail) stay
+# functional and are kept visually distinct from the orange accent.
 
 BRAND = {
-    "primary": "#1e3a5f",     # Navy (headers, borders)
-    "secondary": "#4a5568",    # Warm gray
-    "accent": "#b8860b",       # Dark gold
-    "success": "#2d6a4f",      # Forest green (pass/good)
-    "warning": "#d4740e",      # Warm amber (warnings)
-    "danger": "#c53030",       # Deep red (fail/critical)
-    "dark": "#1a1a2e",         # Dark navy
-    "light_bg": "#faf9f7",     # Warm cream
-    "grid": "#d6d3cc",         # Warm border
-    "muted": "#6b7280",        # Muted text
+    "primary": "#0F0F0F",      # Ink (headings, primary chart series)
+    "secondary": "#4A4A4A",    # Grey 700
+    "accent": "#FF5722",       # Engine Room orange (eyebrows, rules, highlights)
+    "success": "#2E7D4F",      # Status: pass/good
+    "warning": "#B7791F",      # Status: needs improvement (amber, not the accent)
+    "danger": "#C62828",       # Status: fail/critical
+    "dark": "#0F0F0F",         # Ink
+    "light_bg": "#F2F2F2",     # Paper
+    "card": "#FFFFFF",         # Card surface
+    "grid": "#D6D6D6",         # Hairline
+    "muted": "#686868",        # Grey 500
+    "body": "#2D2D2D",         # Body text
+    "track": "#E6E6E6",        # Gauge track
 }
+
+# Font stacks. Inter Tight and IBM Plex Mono are used when their files are
+# installed (system or per-user font folder); otherwise the stack falls back to
+# a common sans and mono so the PDF still builds.
+SANS_STACK = "'Inter Tight', 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, 'DejaVu Sans', sans-serif"
+MONO_STACK = "'IBM Plex Mono', Consolas, 'DejaVu Sans Mono', monospace"
+
+_FONT_PATTERNS = {
+    "Inter Tight": ("InterTight*.ttf", "InterTight*.otf", "Inter Tight*.ttf"),
+    "IBM Plex Mono": ("IBMPlexMono*.ttf", "IBMPlexMono*.otf", "IBM Plex Mono*.ttf"),
+}
+_FONT_CACHE = None
+
+
+def _font_dirs():
+    """Return candidate font folders without hard-coding any user path."""
+    dirs = []
+    windir = os.environ.get("WINDIR") or os.environ.get("SystemRoot")
+    if windir:
+        dirs.append(Path(windir) / "Fonts")
+    local = os.environ.get("LOCALAPPDATA")
+    if local:
+        dirs.append(Path(local) / "Microsoft" / "Windows" / "Fonts")
+    home = Path.home()
+    dirs += [
+        home / "Library" / "Fonts", Path("/Library/Fonts"),
+        home / ".fonts", home / ".local" / "share" / "fonts",
+        Path("/usr/share/fonts"), Path("/usr/local/share/fonts"),
+    ]
+    return [d for d in dirs if d.is_dir()]
+
+
+def _find_brand_fonts():
+    """Locate installed brand font files. Returns {family: [Path, ...]}."""
+    global _FONT_CACHE
+    if _FONT_CACHE is not None:
+        return _FONT_CACHE
+    found = {}
+    for family, patterns in _FONT_PATTERNS.items():
+        files = []
+        for folder in _font_dirs():
+            for pattern in patterns:
+                files.extend(folder.glob(pattern))
+                files.extend(folder.glob(f"*/{pattern}"))
+        if files:
+            found[family] = sorted(set(files))
+    _FONT_CACHE = found
+    return found
+
+
+def _font_weight_style(path):
+    """Infer CSS font-weight and font-style from a font file name."""
+    name = Path(path).stem.lower().replace(" ", "")
+    style = "italic" if "italic" in name else "normal"
+    if "[" in name or "variable" in name:
+        return "100 900", style
+    for token, weight in (
+        ("extralight", "200"), ("ultralight", "200"), ("thin", "100"),
+        ("semibold", "600"), ("demibold", "600"), ("extrabold", "800"),
+        ("ultrabold", "800"), ("black", "900"), ("heavy", "900"),
+        ("light", "300"), ("medium", "500"), ("bold", "700"),
+    ):
+        if token in name:
+            return weight, style
+    return "400", style
+
+
+def _font_face_css():
+    """Build @font-face rules for installed brand fonts (empty when none)."""
+    rules = []
+    for family, files in _find_brand_fonts().items():
+        for path in files:
+            weight, style = _font_weight_style(path)
+            rules.append(
+                f"  @font-face {{ font-family: '{family}'; "
+                f"src: url('{_file_uri(path)}'); "
+                f"font-weight: {weight}; font-style: {style}; }}"
+            )
+    return "\n".join(rules)
+
+
+def _file_uri(path):
+    """Return a file URI that works on Windows and POSIX (file:///C:/...)."""
+    return Path(path).resolve().as_uri()
 
 
 def _score_color(score):
@@ -93,26 +185,80 @@ def _rating_css_class(rating):
     return "status-warn"
 
 
+GSC_ANOMALY_START = "2025-05-13"
+GSC_ANOMALY_END = "2026-04-27"
+GSC_ANOMALY_WARNING = (
+    "GSC impressions logging error affected impressions, CTR, and average "
+    "position from 2025-05-13 through 2026-04-27; clicks were not affected."
+)
+
+
+def _date_range_overlaps(start_date: str, end_date: str, overlap_start: str, overlap_end: str) -> bool:
+    try:
+        start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        end = datetime.strptime(end_date, "%Y-%m-%d").date()
+        window_start = datetime.strptime(overlap_start, "%Y-%m-%d").date()
+        window_end = datetime.strptime(overlap_end, "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return False
+    return start <= window_end and end >= window_start
+
+
+def _gsc_anomaly_warning(gsc_data: dict) -> str:
+    dr = gsc_data.get("date_range", {}) if isinstance(gsc_data, dict) else {}
+    if _date_range_overlaps(
+        dr.get("start"), dr.get("end"), GSC_ANOMALY_START, GSC_ANOMALY_END
+    ):
+        return GSC_ANOMALY_WARNING
+    return ""
+
+
 # ─── Chart Setup ─────────────────────────────────────────────────────────────
 
 def _setup_matplotlib():
-    """Configure matplotlib for professional chart output."""
+    """Configure matplotlib to match the Engine Room report style."""
+    sans = ["Segoe UI", "Helvetica Neue", "Arial", "DejaVu Sans"]
+    try:
+        from matplotlib import font_manager
+        for path in _find_brand_fonts().get("Inter Tight", []):
+            font_manager.fontManager.addfont(str(path))
+        if _find_brand_fonts().get("Inter Tight"):
+            sans.insert(0, "Inter Tight")
+    except (ImportError, OSError, RuntimeError, ValueError):
+        pass
     plt.rcParams.update({
-        "font.family": "serif",
-        "font.serif": ["DejaVu Serif", "Times New Roman", "Georgia"],
-        "font.size": 11,
-        "axes.titlesize": 14,
+        "font.family": "sans-serif",
+        "font.sans-serif": sans,
+        "font.size": 10,
+        "axes.titlesize": 12,
         "axes.titleweight": "bold",
-        "axes.labelsize": 11,
-        "axes.facecolor": "white",
-        "figure.facecolor": "white",
+        "axes.titlecolor": BRAND["dark"],
+        "axes.labelsize": 10,
+        "axes.labelcolor": BRAND["secondary"],
+        "axes.edgecolor": BRAND["grid"],
+        "xtick.color": BRAND["secondary"],
+        "ytick.color": BRAND["secondary"],
+        "text.color": BRAND["dark"],
+        "axes.facecolor": BRAND["card"],
+        "figure.facecolor": BRAND["card"],
         "axes.grid": False,
         "axes.spines.top": False,
         "axes.spines.right": False,
+        "legend.frameon": False,
     })
 
 
-_setup_matplotlib()
+if plt is not None:
+    _setup_matplotlib()
+
+
+def _require_chart_dependencies() -> None:
+    """Raise a runtime error only when a requested report needs charts."""
+    if plt is None or np is None:
+        raise RuntimeError(
+            "matplotlib and numpy are required for chart generation. "
+            "Install the report dependencies from requirements.txt."
+        ) from _CHART_IMPORT_ERROR
 
 
 # ─── Chart Functions ─────────────────────────────────────────────────────────
@@ -122,6 +268,7 @@ def chart_lighthouse_gauges(data: dict, output_dir: Path) -> str:
     scores = data.get("lighthouse_scores", {})
     if not scores:
         return ""
+    _require_chart_dependencies()
 
     fig, axes = plt.subplots(2, 2, figsize=(8, 4), subplot_kw={"projection": "polar"})
     categories = [
@@ -136,8 +283,8 @@ def chart_lighthouse_gauges(data: dict, output_dir: Path) -> str:
         theta_bg = np.linspace(np.pi, 0, 100)
         theta_fill = np.linspace(np.pi, np.pi - (score / 100) * np.pi, 100)
 
-        ax.plot(theta_bg, [1] * 100, linewidth=14, color="#e2e8f0", solid_capstyle="round")
-        ax.plot(theta_fill, [1] * 100, linewidth=14, color=_score_color(score), solid_capstyle="round")
+        ax.plot(theta_bg, [1] * 100, linewidth=14, color=BRAND["track"], solid_capstyle="butt")
+        ax.plot(theta_fill, [1] * 100, linewidth=14, color=_score_color(score), solid_capstyle="butt")
 
         ax.text(np.pi / 2, 0.35, f"{score}", ha="center", va="center",
                 fontsize=24, fontweight="bold", color=BRAND["dark"])
@@ -182,6 +329,7 @@ def chart_cwv_distributions(data: dict, output_dir: Path) -> str:
 
     if not labels:
         return ""
+    _require_chart_dependencies()
 
     fig, ax = plt.subplots(figsize=(8, max(2.5, len(labels) * 0.7)))
     y = range(len(labels))
@@ -231,14 +379,13 @@ def chart_cwv_timeline(data: dict, output_dir: Path) -> str:
     available = [m for m in cwv_metrics if m in metrics]
     if not available:
         return ""
+    _require_chart_dependencies()
 
     fig, axes = plt.subplots(len(available), 1, figsize=(10, 3 * len(available)), sharex=True)
     if len(available) == 1:
         axes = [axes]
 
     x_labels = [p.get("last", "")[-5:] for p in periods]  # MM-DD format
-    x = range(len(x_labels))
-
     for ax, metric_name in zip(axes, available):
         m = metrics[metric_name]
         p75s = m.get("p75_values", [])
@@ -299,12 +446,13 @@ def chart_top_queries(data: dict, output_dir: Path) -> str:
 
     if not impressions or max(impressions) < 3:
         return ""
+    _require_chart_dependencies()
 
     fig, ax = plt.subplots(figsize=(7, max(2, len(labels) * 0.3)))
     y = range(len(labels))
     bars = ax.barh(y, impressions, color=BRAND["primary"], height=0.55, label="Impressions")
     if any(c > 0 for c in clicks):
-        ax.barh(y, clicks, color=BRAND["success"], height=0.55, label="Clicks")
+        ax.barh(y, clicks, color=BRAND["accent"], height=0.55, label="Clicks")
         ax.legend(fontsize=8, loc="lower right")
     ax.set_yticks(y)
     ax.set_yticklabels(labels, fontsize=8)
@@ -347,6 +495,7 @@ def chart_index_status(data: dict, output_dir: Path) -> str:
 
     if not sizes:
         return ""
+    _require_chart_dependencies()
 
     fig, ax = plt.subplots(figsize=(4.5, 3.5))
     wedges, texts, autotexts = ax.pie(
@@ -370,50 +519,47 @@ def chart_index_status(data: dict, output_dir: Path) -> str:
 
 def _build_css(domain: str) -> str:
     """
-    Professional A4 report CSS adapted from generate_pdf.py.
+    A4 report CSS in the Engine Room house style.
 
-    Uses Times New Roman / DejaVu Serif body font. All proven layout classes
-    from the dexdia.com audit report are preserved with the WeasyPrint-safe
-    patterns (div.section for page-break, float:right for badges,
-    display:table for two-column layouts).
+    Paper #F2F2F2, ink #0F0F0F, one accent #FF5722, white cards with hairline
+    borders and 2-4px corners, bracketed mono eyebrows. Inter Tight / IBM Plex
+    Mono are embedded via @font-face when installed, otherwise the sans and
+    mono fallback stacks apply. WeasyPrint-safe patterns are kept (div.section
+    for page breaks, float:right for badges, display:table for columns, no
+    page-break-inside: avoid).
     """
+    # Raw text inside <style>: strip characters that could end the CSS string.
+    domain = "".join(ch for ch in str(domain) if ch not in '"\\<>')
+    font_faces = _font_face_css()
     return f"""\
+{font_faces}
+
   @page {{
     size: A4;
-    margin: 22mm 18mm 25mm 18mm;
-    @bottom-center {{
-      content: "Page " counter(page) " of " counter(pages);
-      font-size: 9pt;
-      color: #6b7280;
-      font-family: 'DejaVu Serif', 'Times New Roman', Georgia, serif;
-    }}
+    margin: 20mm 18mm 22mm 18mm;
+    background: {BRAND["light_bg"]};
     @bottom-left {{
-      content: "Confidential";
+      content: "[ {domain} ]";
+      font-family: {MONO_STACK};
       font-size: 7pt;
-      color: #d6d3cc;
-      font-family: 'DejaVu Serif', 'Times New Roman', Georgia, serif;
+      letter-spacing: 0.6pt;
+      color: {BRAND["muted"]};
     }}
     @bottom-right {{
-      content: "{domain} Google SEO Report";
-      font-size: 8pt;
-      color: #cbd5e1;
-      font-family: 'DejaVu Serif', 'Times New Roman', Georgia, serif;
+      content: counter(page) " / " counter(pages);
+      font-family: {MONO_STACK};
+      font-size: 7pt;
+      letter-spacing: 0.6pt;
+      color: {BRAND["muted"]};
     }}
   }}
 
   @page :first {{
     margin: 0;
+    background: {BRAND["dark"]};
     @bottom-left {{ content: none; }}
     @bottom-center {{ content: none; }}
     @bottom-right {{ content: none; }}
-  }}
-
-  @page toc {{
-    @bottom-center {{
-      content: counter(page);
-      font-size: 9pt;
-      color: #6b7280;
-    }}
   }}
 
   * {{
@@ -423,152 +569,187 @@ def _build_css(domain: str) -> str:
   }}
 
   body {{
-    font-family: 'Times New Roman', 'DejaVu Serif', Georgia, serif;
-    font-size: 10pt;
-    line-height: 1.55;
-    color: #1e293b;
-    background: white;
+    font-family: {SANS_STACK};
+    font-size: 9.5pt;
+    line-height: 1.5;
+    color: {BRAND["body"]};
+    background: {BRAND["light_bg"]};
+    counter-reset: er-section;
   }}
 
-  /* ─── Title Page (Clean White) ─── */
+  /* ─── Title Page (ink) ─── */
   .title-page {{
-    page: first;
     width: 210mm;
     height: 297mm;
-    background: #ffffff;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    text-align: center;
-    color: #1a1a2e;
-    position: relative;
-    padding: 50mm 30mm 40mm 30mm;
-    border-top: 6mm solid #1e3a5f;
+    background: {BRAND["dark"]};
+    color: {BRAND["light_bg"]};
+    padding: 70mm 22mm 30mm 22mm;
+    text-align: left;
+  }}
+
+  .title-page::before {{
+    content: "";
+    display: block;
+    width: 18mm;
+    height: 1.2mm;
+    background: {BRAND["accent"]};
+    margin-bottom: 10mm;
   }}
 
   .title-page .badge {{
-    background: #f7f6f3;
-    border: 1px solid #d6d3cc;
-    border-radius: 20px;
-    padding: 6px 18px;
-    font-size: 9pt;
-    letter-spacing: 2px;
+    font-family: {MONO_STACK};
+    font-size: 8.5pt;
+    letter-spacing: 1.5pt;
     text-transform: uppercase;
-    margin-bottom: 15mm;
-    color: #1e3a5f;
+    color: {BRAND["accent"]};
+    margin-bottom: 8mm;
   }}
 
+  .title-page .badge::before {{ content: "[ "; }}
+  .title-page .badge::after {{ content: " ]"; }}
+
   .title-page h1 {{
-    font-size: 28pt;
-    font-weight: bold;
-    margin-bottom: 5mm;
-    letter-spacing: -0.5px;
-    line-height: 1.2;
-    color: #1a1a2e;
+    font-size: 34pt;
+    font-weight: 700;
+    letter-spacing: -0.6pt;
+    line-height: 1.1;
+    color: {BRAND["light_bg"]};
+    margin-bottom: 4mm;
   }}
 
   .title-page .subtitle {{
     font-size: 13pt;
-    color: #6b7280;
-    margin-bottom: 12mm;
-    font-weight: 300;
-  }}
-
-  .title-page .url {{
-    font-size: 12pt;
-    color: #1e3a5f;
-    margin-bottom: 15mm;
-    padding: 4mm 8mm;
-    border: 1px solid #d6d3cc;
-    border-radius: 6px;
-    background: #faf9f7;
+    color: #969696;
+    margin-bottom: 16mm;
   }}
 
   .title-page .score-box {{
-    background: #faf9f7;
-    border: 2px solid #d6d3cc;
-    border-radius: 12px;
-    padding: 6mm 12mm;
-    margin-bottom: 15mm;
+    display: inline-block;
+    border: 1px solid {BRAND["secondary"]};
+    border-left: 3px solid {BRAND["accent"]};
+    border-radius: 3px;
+    padding: 5mm 9mm 5mm 7mm;
+    margin-bottom: 16mm;
   }}
 
   .title-page .score-number {{
-    font-size: 42pt;
-    font-weight: bold;
-    color: #1e3a5f;
+    white-space: nowrap;
+    font-size: 46pt;
+    font-weight: 700;
+    letter-spacing: -1pt;
+    color: {BRAND["light_bg"]};
     line-height: 1;
   }}
 
+  .title-page .score-max {{
+    font-size: 18pt;
+    font-weight: 400;
+    color: {BRAND["muted"]};
+  }}
+
   .title-page .score-label {{
-    font-size: 10pt;
-    color: #6b7280;
+    font-family: {MONO_STACK};
+    font-size: 7.5pt;
+    letter-spacing: 1pt;
+    text-transform: uppercase;
+    color: #969696;
     margin-top: 2mm;
   }}
 
   .title-page .meta {{
-    font-size: 9pt;
-    color: #6b7280;
-    margin-top: 8mm;
-    padding-top: 5mm;
-    border-top: 1px solid #d6d3cc;
+    font-family: {MONO_STACK};
+    font-size: 7.5pt;
+    letter-spacing: 0.8pt;
+    text-transform: uppercase;
+    color: #969696;
+    padding-top: 4mm;
+    border-top: 1px solid {BRAND["secondary"]};
   }}
 
   .title-page .meta span {{
-    margin: 0 8px;
+    margin-right: 8mm;
+  }}
+
+  .title-page .powered {{
+    margin-top: 8mm;
+  }}
+
+  .title-page .powered img {{
+    height: 18px;
+  }}
+
+  .title-page .powered div {{
+    font-family: {MONO_STACK};
+    font-size: 7pt;
+    color: {BRAND["muted"]};
+    margin-top: 2mm;
   }}
 
   /* ─── Table of Contents ─── */
   .toc-page {{
-    page: toc;
     page-break-before: always;
   }}
 
+  .toc-page::before {{
+    content: "[ Contents ]";
+    display: block;
+    font-family: {MONO_STACK};
+    font-size: 7.5pt;
+    letter-spacing: 1.2pt;
+    text-transform: uppercase;
+    color: {BRAND["accent"]};
+    margin-bottom: 2mm;
+  }}
+
   .toc-page h2 {{
-    font-size: 18pt;
-    color: #1e3a5f;
-    margin-bottom: 8mm;
+    font-size: 22pt;
+    font-weight: 700;
+    letter-spacing: -0.4pt;
+    color: {BRAND["dark"]};
+    margin-bottom: 6mm;
     padding-bottom: 3mm;
-    border-bottom: 2px solid #1e3a5f;
+    border-bottom: 2px solid {BRAND["dark"]};
   }}
 
   .toc-list {{
     list-style: none;
     padding: 0;
+    margin-left: 0;
   }}
 
   .toc-list li {{
     padding: 2mm 0;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid {BRAND["grid"]};
     overflow: hidden;
   }}
 
   .toc-list li.toc-section {{
-    font-weight: bold;
-    font-size: 11pt;
-    padding-top: 4mm;
-    color: #0f172a;
+    font-weight: 600;
+    font-size: 10.5pt;
+    padding-top: 3.5mm;
+    color: {BRAND["dark"]};
   }}
 
   .toc-list li.toc-sub {{
     padding-left: 8mm;
-    font-size: 9.5pt;
-    color: #475569;
+    font-size: 9pt;
+    color: {BRAND["secondary"]};
   }}
 
   .toc-score {{
     display: inline-block;
     float: right;
-    padding: 1px 8px;
-    border-radius: 10px;
-    font-size: 9pt;
-    font-weight: bold;
-    color: white;
+    padding: 0.4mm 2.5mm;
+    border-radius: 2px;
+    font-family: {MONO_STACK};
+    font-size: 8pt;
+    font-weight: 600;
+    color: #FFFFFF;
   }}
 
-  .score-good {{ background: #2d6a4f; }}
-  .score-warn {{ background: #d4740e; }}
-  .score-bad {{ background: #c53030; }}
+  .score-good {{ background: {BRAND["success"]}; }}
+  .score-warn {{ background: {BRAND["warning"]}; }}
+  .score-bad {{ background: {BRAND["danger"]}; }}
 
   /* ─── Section Styles ─── */
   div.section {{
@@ -576,39 +757,54 @@ def _build_css(domain: str) -> str:
   }}
 
   .section-header {{
-    background: #faf9f7;
-    border-left: 4px solid #1e3a5f;
-    padding: 5mm 6mm;
+    counter-increment: er-section;
+    border-top: 2px solid {BRAND["dark"]};
+    padding: 3mm 0 0 0;
     margin-bottom: 6mm;
     page-break-after: avoid;
   }}
 
+  .section-header::before {{
+    content: "[ " counter(er-section, decimal-leading-zero) " ]";
+    display: block;
+    font-family: {MONO_STACK};
+    font-size: 7.5pt;
+    letter-spacing: 1.2pt;
+    color: {BRAND["accent"]};
+    margin-bottom: 1.5mm;
+  }}
+
   .section-header h2 {{
-    font-size: 16pt;
-    color: #0f172a;
-    margin-bottom: 1mm;
+    font-size: 20pt;
+    font-weight: 700;
+    letter-spacing: -0.4pt;
+    line-height: 1.15;
+    color: {BRAND["dark"]};
   }}
 
   .section-header .section-score {{
-    font-size: 12pt;
-    font-weight: bold;
+    font-family: {MONO_STACK};
+    font-size: 11pt;
+    font-weight: 600;
     float: right;
-    margin-top: -6mm;
+    margin-top: -7mm;
   }}
 
   h3 {{
     font-size: 12pt;
-    color: #1e3a5f;
+    font-weight: 700;
+    color: {BRAND["dark"]};
     margin-top: 6mm;
     margin-bottom: 3mm;
     padding-bottom: 1.5mm;
-    border-bottom: 1px solid #d6d3cc;
+    border-bottom: 1px solid {BRAND["grid"]};
     page-break-after: avoid;
   }}
 
   h4 {{
-    font-size: 10.5pt;
-    color: #334155;
+    font-size: 10pt;
+    font-weight: 600;
+    color: {BRAND["dark"]};
     margin-top: 4mm;
     margin-bottom: 2mm;
     page-break-after: avoid;
@@ -616,87 +812,77 @@ def _build_css(domain: str) -> str:
 
   p {{
     margin-bottom: 3mm;
-    color: #334155;
+    color: {BRAND["body"]};
   }}
 
-  .highlight {{
-    background: #fef3c7;
-    border-left: 3px solid #d4740e;
+  .highlight, .critical-box, .success-box {{
+    background: {BRAND["card"]};
+    border: 1px solid {BRAND["grid"]};
+    border-left: 3px solid {BRAND["warning"]};
+    border-radius: 2px;
     padding: 3mm 4mm;
     margin: 4mm 0;
-    font-size: 9.5pt;
+    font-size: 9pt;
     /* allow page breaks to prevent white gaps */
   }}
 
-  .critical-box {{
-    background: #fef2f2;
-    border-left: 3px solid #c53030;
-    padding: 3mm 4mm;
-    margin: 4mm 0;
-    font-size: 9.5pt;
-    /* allow page breaks to prevent white gaps */
-  }}
-
-  .success-box {{
-    background: #f0fdf4;
-    border-left: 3px solid #2d6a4f;
-    padding: 3mm 4mm;
-    margin: 4mm 0;
-    font-size: 9.5pt;
-    /* allow page breaks to prevent white gaps */
-  }}
+  .critical-box {{ border-left-color: {BRAND["danger"]}; }}
+  .success-box {{ border-left-color: {BRAND["success"]}; }}
 
   /* ─── Tables ─── */
   table {{
     width: 100%;
     border-collapse: collapse;
     margin: 4mm 0 6mm 0;
-    font-size: 9pt;
+    font-size: 8.5pt;
+    background: {BRAND["card"]};
   }}
 
   thead th {{
-    background: #f7f6f3;
-    color: #0f172a;
-    font-weight: bold;
-    padding: 3mm 4mm;
+    background: {BRAND["dark"]};
+    color: {BRAND["light_bg"]};
+    font-family: {MONO_STACK};
+    font-weight: 500;
+    font-size: 7pt;
+    letter-spacing: 0.8pt;
+    text-transform: uppercase;
+    padding: 2.5mm 3mm;
     text-align: left;
-    border-bottom: 2px solid #d6d3cc;
-    font-size: 9pt;
   }}
 
   tbody td {{
-    padding: 2.5mm 3mm;
-    border-bottom: 1px solid #f1f5f9;
+    padding: 2.2mm 3mm;
+    border-bottom: 1px solid {BRAND["grid"]};
     vertical-align: top;
   }}
 
-  tbody tr:nth-child(even) {{
-    background: #fdfcfa;
-  }}
-
   .status-pass {{
-    color: #2d6a4f;
-    font-weight: bold;
+    color: {BRAND["success"]};
+    font-weight: 600;
   }}
 
   .status-fail {{
-    color: #c53030;
-    font-weight: bold;
+    color: {BRAND["danger"]};
+    font-weight: 600;
   }}
 
   .status-warn {{
-    color: #d4740e;
-    font-weight: bold;
+    color: {BRAND["warning"]};
+    font-weight: 600;
   }}
 
   .status-partial {{
-    color: #4a5568;
-    font-weight: bold;
+    color: {BRAND["secondary"]};
+    font-weight: 600;
   }}
 
   /* ─── Charts ─── */
   .chart-container {{
     text-align: center;
+    background: {BRAND["card"]};
+    border: 1px solid {BRAND["grid"]};
+    border-radius: 3px;
+    padding: 4mm;
     margin: 4mm 0;
   }}
 
@@ -707,9 +893,10 @@ def _build_css(domain: str) -> str:
   }}
 
   .chart-caption {{
-    font-size: 8.5pt;
-    color: #6b7280;
-    font-style: italic;
+    font-family: {MONO_STACK};
+    font-size: 7pt;
+    letter-spacing: 0.4pt;
+    color: {BRAND["muted"]};
     margin-top: 2mm;
     text-align: center;
   }}
@@ -756,56 +943,46 @@ def _build_css(domain: str) -> str:
 
   /* ─── Metric Cards ─── */
   .metric-card {{
-    background: #faf9f7;
-    border: 1px solid #d6d3cc;
-    border-radius: 6px;
-    padding: 2.5mm 3mm;
-    text-align: center;
+    background: {BRAND["card"]};
+    border: 1px solid {BRAND["grid"]};
+    border-radius: 3px;
+    padding: 3mm 3mm 2.5mm 3mm;
+    text-align: left;
     margin: 2mm 0;
   }}
 
   .metric-card .value {{
-    font-size: 14pt;
-    font-weight: bold;
+    font-size: 15pt;
+    font-weight: 700;
+    letter-spacing: -0.3pt;
     line-height: 1.2;
+    color: {BRAND["dark"]};
   }}
 
   .metric-card .label {{
-    font-size: 7.5pt;
-    color: #64748b;
+    font-family: {MONO_STACK};
+    font-size: 6.5pt;
+    color: {BRAND["muted"]};
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.8pt;
     margin-top: 1mm;
   }}
 
-  /* ─── Action Plan ─── */
+  /* ─── Action Items ─── */
   .action-item {{
-    background: #faf9f7;
-    border-radius: 4px;
+    background: {BRAND["card"]};
+    border: 1px solid {BRAND["grid"]};
+    border-left: 3px solid {BRAND["muted"]};
+    border-radius: 2px;
     padding: 3mm 4mm;
     margin: 3mm 0;
-    border-left: 3px solid #cbd5e1;
     /* allow page breaks to prevent white gaps */
   }}
 
-  .action-item.critical {{
-    border-left-color: #c53030;
-    background: #fdf2f2;
-  }}
-
-  .action-item.high {{
-    border-left-color: #d4740e;
-    background: #fdf8ef;
-  }}
-
-  .action-item.medium {{
-    border-left-color: #1e3a5f;
-    background: #f0f4f8;
-  }}
-
-  .action-item.low {{
-    border-left-color: #94a3b8;
-  }}
+  .action-item.critical {{ border-left-color: {BRAND["danger"]}; }}
+  .action-item.high {{ border-left-color: {BRAND["warning"]}; }}
+  .action-item.medium {{ border-left-color: {BRAND["dark"]}; }}
+  .action-item.low {{ border-left-color: #969696; }}
 
   .action-item h4 {{
     margin-top: 0;
@@ -814,36 +991,32 @@ def _build_css(domain: str) -> str:
     padding-bottom: 0;
   }}
 
-  .action-item .effort {{
-    font-size: 8.5pt;
-    color: #64748b;
-    float: right;
-  }}
-
   .priority-tag {{
     display: inline-block;
-    padding: 0.5mm 3mm;
-    border-radius: 3px;
-    font-size: 8pt;
-    font-weight: bold;
-    color: white;
+    padding: 0.4mm 2.5mm;
+    border-radius: 2px;
+    font-family: {MONO_STACK};
+    font-size: 7pt;
+    font-weight: 600;
+    letter-spacing: 0.8pt;
+    color: #FFFFFF;
     margin-right: 2mm;
     vertical-align: middle;
   }}
 
-  .priority-critical {{ background: #c53030; }}
-  .priority-high {{ background: #d4740e; }}
-  .priority-medium {{ background: #1e3a5f; }}
-  .priority-low {{ background: #94a3b8; }}
+  .priority-critical {{ background: {BRAND["danger"]}; }}
+  .priority-high {{ background: {BRAND["warning"]}; }}
+  .priority-medium {{ background: {BRAND["dark"]}; }}
+  .priority-low {{ background: #969696; }}
 
   /* ─── Code blocks ─── */
   .code-block {{
-    background: #1e293b;
-    color: #e2e8f0;
+    background: {BRAND["dark"]};
+    color: {BRAND["light_bg"]};
     padding: 3mm 4mm;
-    border-radius: 4px;
-    font-family: 'DejaVu Sans Mono', monospace;
-    font-size: 8pt;
+    border-radius: 3px;
+    font-family: {MONO_STACK};
+    font-size: 7.5pt;
     line-height: 1.6;
     margin: 3mm 0;
     white-space: pre-wrap;
@@ -854,24 +1027,25 @@ def _build_css(domain: str) -> str:
   /* ─── Divider ─── */
   .divider {{
     border: none;
-    border-top: 1px solid #d6d3cc;
+    border-top: 1px solid {BRAND["grid"]};
     margin: 5mm 0;
   }}
 
-  /* ─── Roadmap ─── */
+  /* ─── Action groups ─── */
   .roadmap-phase {{
-    background: #faf9f7;
-    border-radius: 6px;
+    background: {BRAND["card"]};
+    border: 1px solid {BRAND["grid"]};
+    border-top: 2px solid {BRAND["accent"]};
+    border-radius: 3px;
     padding: 4mm 5mm;
     margin: 4mm 0;
-    border: 1px solid #d6d3cc;
     /* allow page breaks to prevent white gaps */
   }}
 
   .roadmap-phase h4 {{
     margin-top: 0;
     border-bottom: none;
-    color: #1e3a5f;
+    color: {BRAND["dark"]};
   }}
 
   .roadmap-phase ul {{
@@ -881,8 +1055,8 @@ def _build_css(domain: str) -> str:
 
   .roadmap-phase li {{
     margin-bottom: 1.5mm;
-    font-size: 9.5pt;
-    color: #334155;
+    font-size: 9pt;
+    color: {BRAND["body"]};
   }}
 
   /* ─── Lists ─── */
@@ -895,14 +1069,23 @@ def _build_css(domain: str) -> str:
     margin-bottom: 1.5mm;
   }}
 
-  /* ─── Data freshness ─── */
+  /* ─── Data freshness and footer notes ─── */
   .data-freshness {{
-    font-size: 8pt;
-    color: #6b7280;
-    font-style: italic;
+    font-family: {MONO_STACK};
+    font-size: 7pt;
+    letter-spacing: 0.3pt;
+    color: {BRAND["muted"]};
     margin-top: 4mm;
     padding-top: 2mm;
-    border-top: 1px solid #d6d3cc;
+    border-top: 1px solid {BRAND["grid"]};
+  }}
+
+  .report-footnote {{
+    font-family: {MONO_STACK};
+    font-size: 7.5pt;
+    color: {BRAND["muted"]};
+    margin-top: 5mm;
+    text-align: left;
   }}
 """
 
@@ -910,10 +1093,10 @@ def _build_css(domain: str) -> str:
 # ─── HTML Helpers ────────────────────────────────────────────────────────────
 
 def _img_tag(path, alt="Chart"):
-    """Convert file path to file:// URI img tag for WeasyPrint."""
+    """Convert file path to a file URI img tag for WeasyPrint."""
     if not path:
         return ""
-    return f'<img src="file://{path}" style="max-width: 100%;" alt="{alt}">'
+    return f'<img src="{_file_uri(path)}" style="max-width: 100%;" alt="{alt}">'
 
 
 def _chart_html(path, caption, fig_num, alt="Chart"):
@@ -922,7 +1105,7 @@ def _chart_html(path, caption, fig_num, alt="Chart"):
         return ""
     return (
         f'    <div class="chart-container">\n'
-        f'      <img src="file://{path}" style="width: 85%;" alt="{alt}">\n'
+        f'      <img src="{_file_uri(path)}" style="width: 85%;" alt="{alt}">\n'
         f'      <div class="chart-caption">Figure {fig_num}: {caption}</div>\n'
         f'    </div>\n'
     )
@@ -942,13 +1125,15 @@ def _metric_card(value, label, color=None):
 # ─── Section Builders ────────────────────────────────────────────────────────
 
 def _build_title_page(domain, report_title, subtitle, score=None, score_label=None, meta_items=None):
-    """Build the gradient title page."""
+    """Build the ink title page (eyebrow, domain, subtitle, score, meta)."""
     score_html = ""
     if score is not None:
+        # Counts (clicks, URLs inspected) are not out of 100; only scores get "/100".
+        is_score = "score" in str(score_label or "Score").lower()
+        max_html = '<span class="score-max">/100</span>' if is_score else ""
         score_html = (
             f'  <div class="score-box">\n'
-            f'    <div class="score-number">{score}'
-            f'<span style="font-size: 20pt; color: #94a3b8;">/100</span></div>\n'
+            f'    <div class="score-number">{score}{max_html}</div>\n'
             f'    <div class="score-label">{score_label or "Lighthouse Performance Score"}</div>\n'
             f'  </div>\n'
         )
@@ -967,18 +1152,19 @@ def _build_title_page(domain, report_title, subtitle, score=None, score_label=No
     google_logo_html = ""
     if google_logo_path.exists():
         google_logo_html = (
-            f'  <div style="margin-top: 8mm;">\n'
-            f'    <img src="file://{google_logo_path}" style="height: 20px; opacity: 0.7;" alt="Google">\n'
-            f'    <div style="font-size: 7pt; color: #6b7280; margin-top: 2mm;">Powered by Google APIs</div>\n'
+            f'  <div class="powered">\n'
+            f'    <img src="{_file_uri(google_logo_path)}" alt="Google">\n'
+            f'    <div>Powered by Google APIs</div>\n'
             f'  </div>\n'
         )
 
+    subtitle_html = f'  <div class="subtitle">{subtitle}</div>\n' if subtitle else ""
     return (
         f'\n<!-- {"=" * 55} TITLE PAGE {"=" * 3} -->\n'
         f'<div class="title-page">\n'
         f'  <div class="badge">{report_title}</div>\n'
         f'  <h1>{domain}</h1>\n'
-        f'  <div class="subtitle">Prepared by Claude SEO</div>\n'
+        f'{subtitle_html}'
         f'{score_html}'
         f'{meta_html}'
         f'{google_logo_html}'
@@ -1087,14 +1273,21 @@ def _build_full_audit_categories(data, section_num=2):
             lines.append('  <h4>Findings</h4>')
             for finding in findings:
                 title = escape(_finding_title(finding))
-                severity = escape(_finding_severity(finding))
                 desc = escape(_finding_description(finding))
                 recommendation = ""
                 if isinstance(finding, dict) and finding.get("recommendation"):
                     recommendation = escape(str(finding["recommendation"]))
-                severity_class = _rating_css_class(severity)
                 lines.append('  <div class="action-item medium">')
-                lines.append(f'    <h4>{title} <span class="{severity_class}">{severity}</span></h4>')
+                # Only label a severity when the finding actually carries one. Plain-string
+                # findings have no severity, and _finding_severity() falls back to "Info" --
+                # which would badge every entry as "Info" (see the executive-summary fix for
+                # the same shape). Dict-shaped findings with an explicit severity keep it.
+                if isinstance(finding, dict) and finding.get("severity"):
+                    severity = escape(str(finding["severity"]))
+                    severity_class = _rating_css_class(severity)
+                    lines.append(f'    <h4>{title} <span class="{severity_class}">{severity}</span></h4>')
+                else:
+                    lines.append(f'    <h4>{title}</h4>')
                 if desc:
                     lines.append(f'    <p>{desc}</p>')
                 if recommendation:
@@ -1107,7 +1300,12 @@ def _build_full_audit_categories(data, section_num=2):
 
 
 def _build_audit_action_plan(data, section_num=5):
-    """Build a four-phase or custom action-plan section."""
+    """Build the action-plan section as priority groups.
+
+    Groups keep their names but any ``timeframe`` / ``timeline`` value in the
+    input is deliberately not rendered: reports carry no schedules, effort or
+    week labels (ordering and timing are agreed after scope approval).
+    """
     action_plan = data.get("action_plan", {})
     phases = []
     if isinstance(action_plan, dict):
@@ -1127,18 +1325,13 @@ def _build_audit_action_plan(data, section_num=5):
 
     for idx, phase in enumerate(phases, 1):
         if isinstance(phase, dict):
-            name = phase.get("name") or phase.get("phase") or f"Phase {idx}"
-            timeframe = phase.get("timeframe") or phase.get("timeline") or ""
+            name = phase.get("name") or phase.get("phase") or phase.get("priority") or f"Group {idx}"
             items = _coerce_items(phase.get("items") or phase.get("actions"))
         else:
-            name = f"Phase {idx}"
-            timeframe = ""
+            name = f"Group {idx}"
             items = [phase]
         lines.append('  <div class="roadmap-phase">')
-        heading = escape(str(name))
-        if timeframe:
-            heading = f'{heading} <span class="effort">{escape(str(timeframe))}</span>'
-        lines.append(f'    <h4>{heading}</h4>')
+        lines.append(f'    <h4>{escape(str(name))}</h4>')
         lines.append('    <ul>')
         for item in items:
             lines.append(f'      <li>{escape(str(item))}</li>')
@@ -1217,18 +1410,24 @@ def _build_executive_summary(domain, timestamp, data, report_type):
         display_cards = cards[:5]
         lines.append(f'  <div class="{col_class}">')
         for _, val, lbl, clr in display_cards:
-            lines.append(f'    <div class="col">')
+            lines.append('    <div class="col">')
             lines.append(_metric_card(val, lbl, clr))
-            lines.append(f'    </div>')
+            lines.append('    </div>')
         lines.append('  </div>')
         lines.append('')
 
     # Critical issues box
     issues = []
     for item in _coerce_items(summary.get("top_findings")):
-        severity = _finding_severity(item)
         title = _finding_title(item)
-        issues.append(f'<strong>{escape(severity)}:</strong> {escape(title)}')
+        # Only label a severity when the finding actually carries one. Plain-string
+        # top_findings (the shape documented in seo-audit/SKILL.md) have no severity, and
+        # _finding_severity() falls back to "Info" -- which rendered every entry in the
+        # "Critical Issues Found" box as "Info:", understating the whole section.
+        if isinstance(item, dict) and item.get("severity"):
+            issues.append(f'<strong>{escape(str(item["severity"]))}:</strong> {escape(title)}')
+        else:
+            issues.append(escape(title))
 
     failed_audits = mobile.get("failed_audits", [])
     if failed_audits:
@@ -1264,7 +1463,7 @@ def _build_executive_summary(domain, timestamp, data, report_type):
     qw = gsc.get("quick_wins", [])
     if qw:
         wins.append(f'{len(qw)} search queries at positions 4-10 with high impressions '
-                    f'(small ranking bump = significant traffic)')
+                    f'(check intent fit before optimising)')
 
     opps = mobile.get("opportunities", [])
     for o in opps[:3]:
@@ -1376,7 +1575,7 @@ def _build_cwv_section(psi_data, crux_data, chart_paths, history_data=None, sect
             cls = ("status-pass" if score_val and score_val >= 0.9
                    else ("status-warn" if score_val and score_val >= 0.5 else "status-fail"))
             label = metric_labels.get(k, k.replace("-", " ").title())
-            threshold = thresholds.get(k, "\u2014")
+            threshold = thresholds.get(k, "n/a")
             lines.append(f'      <tr><td>{label}</td><td>{v.get("display", "")}</td>'
                          f'<td class="{cls}">{score_pct}</td><td>{threshold}</td></tr>')
         lines.append('    </tbody>')
@@ -1490,9 +1689,9 @@ def _build_cwv_section(psi_data, crux_data, chart_paths, history_data=None, sect
         if seo_failed:
             lines.append(f'  <h3>SEO Audit Issues ({len(seo_failed)})</h3>')
             for a in seo_failed:
-                lines.append(f'  <div class="action-item critical">')
+                lines.append('  <div class="action-item critical">')
                 lines.append(f'    <h4>{a.get("title", "")}</h4>')
-                lines.append(f'  </div>')
+                lines.append('  </div>')
         else:
             lines.append(f'  <div class="success-box"><strong>SEO:</strong> '
                          f'All {len(seo_audits)} Lighthouse SEO checks passed.</div>')
@@ -1537,6 +1736,7 @@ def _build_cwv_section(psi_data, crux_data, chart_paths, history_data=None, sect
 def _build_gsc_section(gsc_data, chart_paths, section_num=3, fig_start=1):
     """Build the GSC Search Performance section."""
     fig_counter = [fig_start]
+    gsc_warning = _gsc_anomaly_warning(gsc_data)
 
     def next_fig():
         n = fig_counter[0]
@@ -1558,6 +1758,9 @@ def _build_gsc_section(gsc_data, chart_paths, section_num=3, fig_start=1):
         domain = gsc_data.get("property", "?")
         lines.append(f'  <p>Period: {dr.get("start", "?")} to {dr.get("end", "?")} '
                      f'| Property: {domain}</p>')
+        if gsc_warning:
+            lines.append(f'  <div class="highlight"><strong>GSC data warning:</strong> '
+                         f'{escape(gsc_warning)}</div>')
         queries_count = gsc_data.get("row_count", 0)
         impr_total = totals.get("impressions", 0)
         lines.append(f'  <p><strong>{domain}</strong> appeared in <strong>{queries_count}</strong> unique search queries '
@@ -1623,12 +1826,12 @@ def _build_gsc_section(gsc_data, chart_paths, section_num=3, fig_start=1):
         beyond = len([r for r in rows if r.get("position", 99) > 10])
         lines.append(f'  <h3>{section_num}.4 Query Position Analysis</h3>')
         lines.append('  <div class="two-col">')
-        lines.append(f'    <div class="col">')
+        lines.append('    <div class="col">')
         lines.append(_metric_card(str(top3), "Queries in Top 3", BRAND["success"]))
-        lines.append(f'    </div>')
-        lines.append(f'    <div class="col">')
+        lines.append('    </div>')
+        lines.append('    <div class="col">')
         lines.append(_metric_card(str(top10), "Queries in Top 10", BRAND["warning"]))
-        lines.append(f'    </div>')
+        lines.append('    </div>')
         lines.append('  </div>')
         if beyond:
             lines.append(f'  <p>{beyond} queries rank beyond position 10 '
@@ -1640,8 +1843,8 @@ def _build_gsc_section(gsc_data, chart_paths, section_num=3, fig_start=1):
     if qw:
         lines.append(f'  <h3>{section_num}.5 Quick Wins ({len(qw)} opportunities)</h3>')
         lines.append('  <div class="highlight">These queries rank at position 4-10 with '
-                     'high impressions. A small ranking improvement could yield significant '
-                     'traffic gains.</div>')
+                     'high impressions. Check that the ranking page matches the intent of '
+                     'each query before optimising it.</div>')
         lines.append('  <table>')
         lines.append('    <thead>')
         lines.append('      <tr><th>Query</th><th>Position</th>'
@@ -1690,25 +1893,24 @@ def _build_indexation_section(inspect_data, chart_paths, section_num=4, fig_star
         if idx_path:
             fig_n = next_fig()
             lines.append(f'  <h3>{section_num}.1 Index Coverage Overview</h3>')
-            lines.append(f'    <div class="chart-container">')
-            lines.append(f'      <img src="file://{idx_path}" style="width: 70%;" alt="Index status donut chart">')
+            lines.append('    <div class="chart-container">')
+            lines.append(f'      <img src="{_file_uri(idx_path)}" style="width: 70%;" alt="Index status donut chart">')
             lines.append(f'      <div class="chart-caption">Figure {fig_n}: URL indexation status distribution from Google URL Inspection API.</div>')
-            lines.append(f'    </div>')
+            lines.append('    </div>')
 
         # Summary cards
         lines.append(f'  <p>Total URLs inspected: <strong>{total}</strong></p>')
         lines.append('  <div class="two-col">')
-        lines.append(f'    <div class="col">')
+        lines.append('    <div class="col">')
         lines.append(_metric_card(summary.get("pass", 0), "Indexed", BRAND["success"]))
-        lines.append(f'    </div>')
-        lines.append(f'    <div class="col">')
+        lines.append('    </div>')
+        lines.append('    <div class="col">')
         lines.append(_metric_card(summary.get("fail", 0), "Not Indexed", BRAND["danger"]))
-        lines.append(f'    </div>')
+        lines.append('    </div>')
         lines.append('  </div>')
         lines.append('')
 
         indexed = summary.get("pass", 0)
-        not_indexed = summary.get("fail", 0)
         if total > 0:
             rate = round((indexed / total) * 100, 1)
             lines.append(f'  <p><strong>Index Rate:</strong> {rate}% of inspected URLs are indexed by Google.</p>')
@@ -1793,7 +1995,7 @@ def _build_recommendations(data, section_num=5):
     perf = mobile.get("lighthouse_scores", {}).get("performance")
     if perf is not None and perf < 50:
         critical_items.append(
-            ("Improve Lighthouse Performance Score", "Medium (2-4 hrs)",
+            ("Improve Lighthouse Performance Score",
              f"Current score is {perf}/100. Focus on reducing Largest Contentful Paint "
              f"and Total Blocking Time. Defer non-critical JavaScript and optimize images.")
         )
@@ -1801,7 +2003,7 @@ def _build_recommendations(data, section_num=5):
     seo_failed = [a for a in mobile.get("seo_audits", []) if not a.get("pass")]
     for a in seo_failed[:2]:
         critical_items.append(
-            (f"Fix SEO Issue: {a.get('title', 'Unknown')}", "Low (30 min)",
+            (f"Fix SEO Issue: {a.get('title', 'Unknown')}",
              "This Lighthouse SEO check is failing. Address it to ensure proper crawling "
              "and indexing by search engines.")
         )
@@ -1810,21 +2012,20 @@ def _build_recommendations(data, section_num=5):
     not_indexed = inspect.get("summary", {}).get("fail", 0)
     if not_indexed:
         critical_items.append(
-            (f"Resolve {not_indexed} Non-Indexed URL(s)", "Medium (2-4 hrs)",
+            (f"Resolve {not_indexed} Non-Indexed URL(s)",
              "These pages are not appearing in Google's index. Review coverage state, "
              "fix crawl errors, and request re-indexing via Search Console.")
         )
 
     if critical_items:
-        lines.append(f'  <h3><span class="priority-tag priority-critical">CRITICAL</span> '
-                     f'Fix Immediately</h3>')
-        for title, effort, desc in critical_items:
+        lines.append('  <h3><span class="priority-tag priority-critical">CRITICAL</span> '
+                     'Critical priority</h3>')
+        for title, desc in critical_items:
             item_num += 1
-            lines.append(f'  <div class="action-item critical">')
-            lines.append(f'    <h4>{item_num}. {title} '
-                         f'<span class="effort">Effort: {effort}</span></h4>')
+            lines.append('  <div class="action-item critical">')
+            lines.append(f'    <h4>{item_num}. {title}</h4>')
             lines.append(f'    <p>{desc}</p>')
-            lines.append(f'  </div>')
+            lines.append('  </div>')
         lines.append('')
 
     # High priority items
@@ -1834,7 +2035,7 @@ def _build_recommendations(data, section_num=5):
     for a in top_fails:
         if a.get("score", 1) < 0.5:
             high_items.append(
-                (f"Address: {a.get('title', 'Unknown')}", "Medium (1-2 hrs)",
+                (f"Address: {a.get('title', 'Unknown')}",
                  f"Score: {a['score']:.0%}. {a.get('display', 'Review and optimize this audit.')}")
             )
 
@@ -1843,7 +2044,7 @@ def _build_recommendations(data, section_num=5):
         savings = o.get("savings_ms", 0)
         if savings:
             high_items.append(
-                (f"{o.get('title', 'Optimization')}", "Medium (2-4 hrs)",
+                (f"{o.get('title', 'Optimization')}",
                  f"Potential savings of ~{savings}ms. Implement this to improve page load speed.")
             )
 
@@ -1851,21 +2052,21 @@ def _build_recommendations(data, section_num=5):
     qw = gsc.get("quick_wins", [])
     if qw:
         high_items.append(
-            (f"Optimize {len(qw)} Quick-Win Queries", "Medium (2-4 hrs)",
-             "These queries rank at positions 4-10 with high impressions. "
-             "Improve on-page SEO and content depth to push them into top 3.")
+            (f"Optimize {len(qw)} Quick-Win Queries",
+             "These queries rank at positions 4-10 with high impressions. Check that "
+             "the ranking page matches the intent of each query, then improve on-page "
+             "relevance and depth.")
         )
 
     if high_items:
-        lines.append(f'  <h3><span class="priority-tag priority-high">HIGH</span> '
-                     f'Fix Within 1 Week</h3>')
-        for title, effort, desc in high_items:
+        lines.append('  <h3><span class="priority-tag priority-high">HIGH</span> '
+                     'High priority</h3>')
+        for title, desc in high_items:
             item_num += 1
-            lines.append(f'  <div class="action-item high">')
-            lines.append(f'    <h4>{item_num}. {title} '
-                         f'<span class="effort">Effort: {effort}</span></h4>')
+            lines.append('  <div class="action-item high">')
+            lines.append(f'    <h4>{item_num}. {title}</h4>')
             lines.append(f'    <p>{desc}</p>')
-            lines.append(f'  </div>')
+            lines.append('  </div>')
         lines.append('')
 
     # Medium priority items
@@ -1873,7 +2074,7 @@ def _build_recommendations(data, section_num=5):
     a11y = mobile.get("accessibility_audits", [])
     if a11y:
         medium_items.append(
-            (f"Fix {len(a11y)} Accessibility Issue(s)", "Low (30 min)",
+            (f"Fix {len(a11y)} Accessibility Issue(s)",
              "Accessibility improvements benefit SEO (Lighthouse score) and user experience. "
              "Address failing accessibility audits.")
         )
@@ -1881,7 +2082,7 @@ def _build_recommendations(data, section_num=5):
     acc_score = mobile.get("lighthouse_scores", {}).get("accessibility")
     if acc_score is not None and acc_score < 90 and not a11y:
         medium_items.append(
-            ("Improve Accessibility Score", "Medium (2-4 hrs)",
+            ("Improve Accessibility Score",
              f"Current score: {acc_score}/100. Run a detailed accessibility audit "
              f"and address any violations.")
         )
@@ -1889,21 +2090,20 @@ def _build_recommendations(data, section_num=5):
     bp_score = mobile.get("lighthouse_scores", {}).get("best-practices")
     if bp_score is not None and bp_score < 90:
         medium_items.append(
-            ("Address Best Practices Issues", "Low (30 min)",
+            ("Address Best Practices Issues",
              f"Current score: {bp_score}/100. Review browser console for errors, "
              f"update deprecated APIs, and ensure HTTPS for all resources.")
         )
 
     if medium_items:
-        lines.append(f'  <h3><span class="priority-tag priority-medium">MEDIUM</span> '
-                     f'Fix Within 1 Month</h3>')
-        for title, effort, desc in medium_items:
+        lines.append('  <h3><span class="priority-tag priority-medium">MEDIUM</span> '
+                     'Medium priority</h3>')
+        for title, desc in medium_items:
             item_num += 1
-            lines.append(f'  <div class="action-item medium">')
-            lines.append(f'    <h4>{item_num}. {title} '
-                         f'<span class="effort">Effort: {effort}</span></h4>')
+            lines.append('  <div class="action-item medium">')
+            lines.append(f'    <h4>{item_num}. {title}</h4>')
             lines.append(f'    <p>{desc}</p>')
-            lines.append(f'  </div>')
+            lines.append('  </div>')
         lines.append('')
 
     # If no recommendations were generated at all
@@ -1912,58 +2112,67 @@ def _build_recommendations(data, section_num=5):
                      'Continue monitoring Core Web Vitals and search performance regularly.</div>')
         lines.append('')
 
-    # Implementation Roadmap
-    lines.append('  <hr class="divider">')
-    lines.append('  <h3>Implementation Roadmap</h3>')
-    lines.append('  <div class="roadmap-phase">')
-    lines.append('    <h4>Week 1 &mdash; Quick Wins</h4>')
-    lines.append('    <ul>')
+    # Action groups: grouped by type of work, no dates, weeks or effort.
+    groups = []
+    quick = []
     if seo_failed:
-        lines.append('      <li>Fix failing Lighthouse SEO checks</li>')
+        quick.append('Fix failing Lighthouse SEO checks')
     if a11y:
-        lines.append(f'      <li>Address {len(a11y)} accessibility issue(s)</li>')
+        quick.append(f'Address {len(a11y)} accessibility issue(s)')
     bp_score_val = mobile.get("lighthouse_scores", {}).get("best-practices")
     if bp_score_val is not None and bp_score_val < 90:
-        lines.append('      <li>Review and fix Best Practices issues</li>')
-    if not seo_failed and not a11y and (bp_score_val is None or bp_score_val >= 90):
-        lines.append('      <li>Verify all monitoring dashboards are active</li>')
-    lines.append('    </ul>')
-    lines.append('  </div>')
-    lines.append('  <div class="roadmap-phase">')
-    lines.append('    <h4>Week 2&ndash;3 &mdash; Performance &amp; Indexation</h4>')
-    lines.append('    <ul>')
+        quick.append('Review and fix Best Practices issues')
+    if quick:
+        groups.append(('Checks and fixes', quick))
+    perf_items = []
     if perf is not None and perf < 50:
-        lines.append('      <li>Optimize Largest Contentful Paint and Total Blocking Time</li>')
+        perf_items.append('Optimize Largest Contentful Paint and Total Blocking Time')
     if not_indexed:
-        lines.append(f'      <li>Resolve {not_indexed} non-indexed URL(s)</li>')
+        perf_items.append(f'Resolve {not_indexed} non-indexed URL(s)')
     if opps:
-        lines.append(f'      <li>Implement {len(opps)} performance optimization(s)</li>')
-    if (perf is None or perf >= 50) and not not_indexed and not opps:
-        lines.append('      <li>Maintain current performance levels and monitor trends</li>')
-    lines.append('    </ul>')
-    lines.append('  </div>')
-    lines.append('  <div class="roadmap-phase">')
-    lines.append('    <h4>Week 4 &mdash; Content &amp; Search Optimization</h4>')
-    lines.append('    <ul>')
+        perf_items.append(f'Implement {len(opps)} performance optimization(s)')
+    if perf_items:
+        groups.append(('Performance &amp; indexation', perf_items))
+    search_items = []
     if qw:
-        lines.append(f'      <li>Optimize {len(qw)} quick-win queries for top-3 rankings</li>')
-    lines.append('      <li>Review and improve content depth for underperforming pages</li>')
-    lines.append('      <li>Set up ongoing monitoring and reporting cadence</li>')
-    lines.append('    </ul>')
-    lines.append('  </div>')
-    lines.append('')
+        search_items.append(
+            f'Check intent fit, then on-page relevance, for {len(qw)} queries at positions 4-10'
+        )
+    if search_items:
+        groups.append(('Content &amp; search', search_items))
+    if groups:
+        lines.append('  <hr class="divider">')
+        lines.append('  <h3>Action Groups</h3>')
+        lines.append('  <p>Grouped by type of work. Order of work and timing are agreed '
+                     'separately.</p>')
+        for heading, items in groups:
+            lines.append('  <div class="roadmap-phase">')
+            lines.append(f'    <h4>{heading}</h4>')
+            lines.append('    <ul>')
+            for item in items:
+                lines.append(f'      <li>{item}</li>')
+            lines.append('    </ul>')
+            lines.append('  </div>')
+        lines.append('')
 
     lines.append('</div>')
     return "\n".join(lines)
 
 
-def _build_methodology_footer(domain, timestamp):
+def _build_methodology_footer(domain, timestamp, gsc_warning=""):
     """Build the Data Sources & Methodology footer section."""
+    warning_html = ""
+    if gsc_warning:
+        warning_html = (
+            f'  <p class="data-freshness"><strong>GSC data warning:</strong> '
+            f'{escape(gsc_warning)}</p>\n'
+        )
     return (
         f'\n<!-- {"=" * 55} DATA SOURCES & METHODOLOGY {"=" * 3} -->\n'
-        f'<div class="section" style="text-align: center; padding-top: 15mm;">\n'
-        f'  <hr class="divider">\n'
-        f'  <h3 style="text-align: left;">Data Sources &amp; Methodology</h3>\n'
+        f'<div class="section">\n'
+        f'  <div class="section-header">\n'
+        f'    <h2>Data Sources &amp; Methodology</h2>\n'
+        f'  </div>\n'
         f'  <table>\n'
         f'    <thead>\n'
         f'      <tr><th>Source</th><th>Description</th><th>Update Frequency</th></tr>\n'
@@ -1986,9 +2195,9 @@ def _build_methodology_footer(domain, timestamp):
         f'          <td>Real-time (2,000/day)</td></tr>\n'
         f'    </tbody>\n'
         f'  </table>\n'
-        f'  <p style="color: #94a3b8; font-size: 9pt; margin-top: 5mm;">\n'
-        f'    Report generated by Claude SEO &mdash; Google SEO Intelligence Skill &mdash; '
-        f'{timestamp}<br>\n'
+        f'{warning_html}'
+        f'  <p class="report-footnote">\n'
+        f'    Report generated {timestamp}<br>\n'
         f'    Methodology based on Google Web Vitals thresholds, Search Console documentation, '
         f'and Lighthouse scoring algorithms.\n'
         f'  </p>\n'
@@ -2017,42 +2226,45 @@ def generate_report(report_type, data, domain, output_dir, output_format="pdf"):
     charts_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now().strftime("%B %d, %Y")
-    timestamp_short = datetime.now().strftime("%Y-%m-%d %H:%M")
     result = {"report_type": report_type, "domain": domain, "files": [], "error": None}
 
     # ── Generate Charts ──────────────────────────────────────────────────────
 
     chart_paths = {}
 
-    if report_type in ("cwv-audit", "full"):
-        psi = data.get("psi", data)
-        mobile = psi.get("psi", {}).get("mobile", psi) if isinstance(psi, dict) else {}
-        path = chart_lighthouse_gauges(mobile, charts_dir)
-        if path:
-            chart_paths["gauges_path"] = path
-
-        crux = data.get("crux", {})
-        path = chart_cwv_distributions({"crux": crux} if crux else data, charts_dir)
-        if path:
-            chart_paths["distributions_path"] = path
-
-        history = data.get("crux_history", {})
-        if history and not history.get("error"):
-            path = chart_cwv_timeline(history, charts_dir)
+    try:
+        if report_type in ("cwv-audit", "full"):
+            psi = data.get("psi", data)
+            mobile = psi.get("psi", {}).get("mobile", psi) if isinstance(psi, dict) else {}
+            path = chart_lighthouse_gauges(mobile, charts_dir)
             if path:
-                chart_paths["timeline_path"] = path
+                chart_paths["gauges_path"] = path
 
-    if report_type in ("gsc-performance", "full"):
-        gsc = data.get("gsc", data)
-        path = chart_top_queries(gsc, charts_dir)
-        if path:
-            chart_paths["top_queries_path"] = path
+            crux = data.get("crux", {})
+            path = chart_cwv_distributions({"crux": crux} if crux else data, charts_dir)
+            if path:
+                chart_paths["distributions_path"] = path
 
-    if report_type in ("indexation", "full"):
-        inspect = data.get("inspection", data)
-        path = chart_index_status(inspect, charts_dir)
-        if path:
-            chart_paths["index_status_path"] = path
+            history = data.get("crux_history", {})
+            if history and not history.get("error"):
+                path = chart_cwv_timeline(history, charts_dir)
+                if path:
+                    chart_paths["timeline_path"] = path
+
+        if report_type in ("gsc-performance", "full"):
+            gsc = data.get("gsc", data)
+            path = chart_top_queries(gsc, charts_dir)
+            if path:
+                chart_paths["top_queries_path"] = path
+
+        if report_type in ("indexation", "full"):
+            inspect = data.get("inspection", data)
+            path = chart_index_status(inspect, charts_dir)
+            if path:
+                chart_paths["index_status_path"] = path
+    except RuntimeError as exc:
+        result["error"] = str(exc)
+        return result
 
     # ── Build HTML Sections ──────────────────────────────────────────────────
 
@@ -2139,7 +2351,7 @@ def generate_report(report_type, data, domain, output_dir, output_format="pdf"):
         sections.append(gsc_html)
 
         sections.append(_build_recommendations(data, section_num=3))
-        sections.append(_build_methodology_footer(domain, timestamp))
+        sections.append(_build_methodology_footer(domain, timestamp, _gsc_anomaly_warning(gsc)))
 
     # ── INDEXATION report ────────────────────────────────────────────────────
     elif report_type == "indexation":
@@ -2238,7 +2450,7 @@ def generate_report(report_type, data, domain, output_dir, output_format="pdf"):
         if data.get("action_plan"):
             toc_sections.append({
                 "num": sec_num, "title": "Action Plan", "subs": [
-                    "Phased Roadmap",
+                    "Actions Grouped by Priority",
                 ],
             })
         else:
@@ -2290,7 +2502,7 @@ def generate_report(report_type, data, domain, output_dir, output_format="pdf"):
             sections.append(action_html)
         else:
             sections.append(_build_recommendations(data, section_num=rec_num))
-        sections.append(_build_methodology_footer(domain, timestamp))
+        sections.append(_build_methodology_footer(domain, timestamp, _gsc_anomaly_warning(data.get("gsc", {}))))
 
     # ── Assemble Final HTML ──────────────────────────────────────────────────
 
@@ -2323,6 +2535,12 @@ def generate_report(report_type, data, domain, output_dir, output_format="pdf"):
         result["files"].append(str(html_path))
 
     if output_format in ("pdf", "both", "all"):
+        if HTML is None:
+            result["error"] = (
+                "weasyprint is required for PDF generation. "
+                "Install the report dependencies from requirements.txt."
+            )
+            return result
         pdf_path = output_dir / f"{base_name}.pdf"
         try:
             HTML(string=html_content).write_pdf(str(pdf_path))
@@ -2362,7 +2580,7 @@ def _review_pdf(pdf_path: str, html_content: str) -> dict:
         reader = PdfReader(pdf_path)
         review["page_count"] = len(reader.pages)
     except ImportError:
-        pass
+        review["issues"].append("pypdf missing, page-count check skipped")
 
     # HTML-level checks
     import re
@@ -2402,7 +2620,7 @@ def generate_xlsx(data, domain, report_type, output_dir):
     """
     try:
         from openpyxl import Workbook
-        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.styles import Font
         from openpyxl.utils import get_column_letter
     except ImportError:
         print("Warning: openpyxl not installed. Skipping xlsx. Install: pip install openpyxl", file=sys.stderr)
@@ -2411,28 +2629,24 @@ def generate_xlsx(data, domain, report_type, output_dir):
     wb = Workbook()
     output_dir = Path(output_dir)
 
-    # Brand colors for Excel
-    navy_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid")
-    cream_fill = PatternFill(start_color="FAF9F7", end_color="FAF9F7", fill_type="solid")
-    green_fill = PatternFill(start_color="D4EDDA", end_color="D4EDDA", fill_type="solid")
-    amber_fill = PatternFill(start_color="FFF3CD", end_color="FFF3CD", fill_type="solid")
-    red_fill = PatternFill(start_color="F8D7DA", end_color="F8D7DA", fill_type="solid")
-    header_font = Font(name="Calibri", bold=True, color="FFFFFF", size=11)
-    body_font = Font(name="Calibri", size=10)
-    thin_border = Border(
-        left=Side(style="thin", color="D6D3CC"),
-        right=Side(style="thin", color="D6D3CC"),
-        top=Side(style="thin", color="D6D3CC"),
-        bottom=Side(style="thin", color="D6D3CC"),
-    )
+    # Plain functional grid: header in row 1, bold Calibri, frozen header,
+    # autofilter, no fills, colours or title blocks inside the grid.
+    header_font = Font(name="Calibri", bold=True, size=11)
+    body_font = Font(name="Calibri", size=11)
 
     def _style_header(ws, row=1):
-        """Apply navy header styling to the first row."""
+        """Bold the header row (no fill or colour)."""
         for cell in ws[row]:
             cell.font = header_font
-            cell.fill = navy_fill
-            cell.alignment = Alignment(horizontal="center", vertical="center")
-            cell.border = thin_border
+
+    def _finish_sheet(ws, last_col):
+        """Freeze the header, add an autofilter and fit column widths."""
+        ws.freeze_panes = "A2"
+        ws.auto_filter.ref = f"A1:{last_col}{max(ws.max_row, 1)}"
+        for row in ws.iter_rows(min_row=2):
+            for cell in row:
+                cell.font = body_font
+        _auto_width(ws)
 
     def _auto_width(ws):
         """Auto-fit column widths based on content."""
@@ -2444,63 +2658,42 @@ def generate_xlsx(data, domain, report_type, output_dir):
                     max_len = max(max_len, len(str(cell.value)))
             ws.column_dimensions[col_letter].width = min(max_len + 4, 60)
 
-    def _severity_fill(severity):
-        """Return fill color based on severity string."""
-        s = str(severity).lower()
-        if s in ("critical", "fail", "high"):
-            return red_fill
-        if s in ("warning", "warn", "medium"):
-            return amber_fill
-        if s in ("pass", "good", "low"):
-            return green_fill
-        return cream_fill
+    def _rating(value):
+        if value >= 90:
+            return "pass"
+        if value >= 50:
+            return "warning"
+        return "fail"
 
-    # ── Summary Sheet ─────────────────────────────────────────────────────────
+    # ── Summary Sheet (one filterable register) ──────────────────────────────
     ws = wb.active
     ws.title = "Summary"
-    ws.append(["Google SEO Report", "", ""])
-    ws.append(["Domain", domain])
-    ws.append(["Report Type", report_type])
-    ws.append(["Generated", datetime.now().strftime("%Y-%m-%d %H:%M")])
-    ws.append([])
+    ws.append(["Section", "Item", "Value", "Rating"])
+    _style_header(ws)
+    ws.append(["Report", "Domain", domain, ""])
+    ws.append(["Report", "Report Type", report_type, ""])
+    ws.append(["Report", "Generated", datetime.now().strftime("%Y-%m-%d %H:%M"), ""])
 
-    # Add scores if available
     if report_type in ("cwv-audit", "full"):
         psi = data.get("psi", data)
         mobile = psi.get("psi", {}).get("mobile", psi) if isinstance(psi, dict) else {}
         scores = mobile.get("lighthouse_scores", {}) if isinstance(mobile, dict) else {}
-        if scores:
-            ws.append(["Lighthouse Scores", ""])
-            ws.append(["Category", "Score"])
-            _style_header(ws, ws.max_row)
-            for cat in ["performance", "accessibility", "best_practices", "seo"]:
-                val = scores.get(cat)
-                if val is not None:
-                    row_num = ws.max_row + 1
-                    ws.append([cat.replace("_", " ").title(), int(val * 100) if val <= 1 else val])
-                    ws.cell(row=row_num, column=2).fill = _severity_fill(
-                        "pass" if (val * 100 if val <= 1 else val) >= 90
-                        else "warning" if (val * 100 if val <= 1 else val) >= 50
-                        else "fail"
-                    )
-            ws.append([])
+        for cat in ["performance", "accessibility", "best-practices", "best_practices", "seo"]:
+            val = scores.get(cat)
+            if isinstance(val, (int, float)):
+                pct = int(val * 100) if val <= 1 else val
+                label = cat.replace("_", " ").replace("-", " ").title()
+                ws.append(["Lighthouse", label, pct, _rating(pct)])
 
-    # CWV metrics
-    if report_type in ("cwv-audit", "full"):
         crux = data.get("crux", {})
         metrics = crux.get("metrics", {}) if isinstance(crux, dict) else {}
-        if metrics:
-            ws.append(["Core Web Vitals (Field Data)", ""])
-            ws.append(["Metric", "Value", "Rating"])
-            _style_header(ws, ws.max_row)
-            for metric_name, metric_data in metrics.items():
-                if isinstance(metric_data, dict):
-                    p75 = metric_data.get("percentile_p75", metric_data.get("p75", ""))
-                    rating = metric_data.get("category", "")
-                    ws.append([metric_name, p75, rating])
-            ws.append([])
+        for metric_name, metric_data in metrics.items():
+            if isinstance(metric_data, dict):
+                p75 = metric_data.get("percentile_p75", metric_data.get("p75", ""))
+                rating = metric_data.get("category", "")
+                ws.append(["Core Web Vitals (field)", metric_name, p75, rating])
 
-    _auto_width(ws)
+    _finish_sheet(ws, "D")
 
     # ── GSC Queries Sheet ─────────────────────────────────────────────────────
     gsc = data.get("gsc", {})
@@ -2520,9 +2713,7 @@ def generate_xlsx(data, domain, report_type, output_dir):
                     f"{row_data.get('ctr', 0):.2%}" if isinstance(row_data.get("ctr"), (int, float)) else str(row_data.get("ctr", "")),
                     round(row_data.get("position", 0), 1) if isinstance(row_data.get("position"), (int, float)) else row_data.get("position", ""),
                 ])
-        ws2.auto_filter.ref = f"A1:E{ws2.max_row}"
-        ws2.freeze_panes = "A2"
-        _auto_width(ws2)
+        _finish_sheet(ws2, "E")
 
     # ── GSC Pages Sheet ───────────────────────────────────────────────────────
     pages = gsc.get("pages", [])
@@ -2541,9 +2732,7 @@ def generate_xlsx(data, domain, report_type, output_dir):
                     f"{row_data.get('ctr', 0):.2%}" if isinstance(row_data.get("ctr"), (int, float)) else str(row_data.get("ctr", "")),
                     round(row_data.get("position", 0), 1) if isinstance(row_data.get("position"), (int, float)) else row_data.get("position", ""),
                 ])
-        ws3.auto_filter.ref = f"A1:E{ws3.max_row}"
-        ws3.freeze_panes = "A2"
-        _auto_width(ws3)
+        _finish_sheet(ws3, "E")
 
     # ── Indexation Sheet ──────────────────────────────────────────────────────
     inspection = data.get("inspection", {})
@@ -2564,9 +2753,7 @@ def generate_xlsx(data, domain, report_type, output_dir):
                     idx.get("crawledAs", ""),
                     idx.get("lastCrawlTime", ""),
                 ])
-        ws4.auto_filter.ref = f"A1:F{ws4.max_row}"
-        ws4.freeze_panes = "A2"
-        _auto_width(ws4)
+        _finish_sheet(ws4, "F")
 
     # ── Save ──────────────────────────────────────────────────────────────────
     timestamp = datetime.now().strftime("%Y%m%d-%H%M")
@@ -2604,7 +2791,7 @@ def main():
     # Load data
     if args.data:
         try:
-            with open(args.data, "r") as f:
+            with open(args.data, "r", encoding="utf-8") as f:
                 data = json.load(f)
         except (json.JSONDecodeError, IOError) as e:
             print(f"Error reading data file: {e}", file=sys.stderr)

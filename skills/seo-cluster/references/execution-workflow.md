@@ -12,7 +12,9 @@ Content is created in this strict order:
 
 1. **Pillar page first** -- The hub must exist before any spokes can link to it
 2. **Spokes by search volume (descending)** -- Highest-volume spokes first for
-   maximum early impact
+   maximum early impact. Volume is the Semrush figure for the plan's market
+   database (`volume_source` in `cluster-plan.json`); posts with no volume data
+   go after posts with data, ordered by Search Console impressions if available
 3. **Within same volume, by cluster index** -- Process Cluster 0 before Cluster 1
 4. **Within same cluster, by post index** -- Process Post 0 before Post 1
 
@@ -35,6 +37,9 @@ When invoking `blog-write` for each post, pass a structured context block:
     "post_index": 0,
     "primary_keyword": "target keyword",
     "secondary_keywords": ["variant 1", "variant 2"],
+    "market": "au",
+    "intent_serp": "Know (judged from Semrush phrase_organic au, YYYY-MM-DD)",
+    "sections_from_fanout": ["sub-question answered as an H2 or H3 in this post"],
     "template": "how-to",
     "word_count_target": 1500,
     "outgoing_links": [

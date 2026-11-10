@@ -24,13 +24,13 @@ coverage; spokes provide deep dives into subtopics.
 | Attribute | Requirement |
 |-----------|-------------|
 | Word count | 2,500-4,000 words |
-| Keyword | Broadest, highest-volume keyword in the set |
+| Keyword | Broadest, highest-volume keyword in the set (Semrush volume for the market database) |
 | Content type | Comprehensive overview covering all cluster subtopics |
-| Template | `ultimate-guide` (default) |
+| Template | `ultimate-guide` (default), unless the pillar query's result page shows another page type |
 | Internal links | Link to EVERY spoke post in every cluster (mandatory) |
 | Structure | Table of contents, section per cluster, summary per subtopic |
 | Schema | Article + BreadcrumbList + ItemList (listing all cluster pages) |
-| Update frequency | Refresh quarterly or when new spokes are added |
+| Refresh trigger | New spokes added, or the pillar query's result page changes |
 
 ## Spoke Page Specifications
 
@@ -135,9 +135,11 @@ coverage; spokes provide deep dives into subtopics.
 
 ```json
 {
-  "version": "1.9.0",
+  "version": "2.2.5",
   "seed_keyword": "string",
   "created_at": "ISO-8601",
+  "market": { "semrush_database": "au", "gsc_country": "AUS", "language": "en" },
+  "volume_source": { "tool": "Semrush phrase_these", "database": "au", "data_date": "YYYY-MM-DD" },
   "pillar": {
     "title": "string",
     "keyword": "string",
@@ -145,6 +147,7 @@ coverage; spokes provide deep dives into subtopics.
     "template": "ultimate-guide",
     "wordCount": 4000,
     "url": "string",
+    "existing_url": "string|null",
     "status": "planned|written"
   },
   "clusters": [
@@ -155,6 +158,12 @@ coverage; spokes provide deep dives into subtopics.
           "title": "string",
           "keyword": "string",
           "volume": 0,
+          "intent_tool": { "label": "Commercial", "tool": "Semrush", "date": "YYYY-MM-DD" },
+          "intent_serp": { "label": "Do", "source": "Semrush phrase_organic au", "date": "YYYY-MM-DD" },
+          "ai_overview": "present|absent|unknown",
+          "result_urls": ["top-10 URLs used for overlap"],
+          "sections_from_fanout": ["sub-questions answered inside this post"],
+          "existing_url": "string|null",
           "template": "string",
           "wordCount": 1500,
           "url": "string",
@@ -168,7 +177,8 @@ coverage; spokes provide deep dives into subtopics.
   ],
   "serp_matrix": {
     "keywords": ["string"],
-    "scores": [[0]]
+    "scores": [[0]],
+    "unchecked_pairs_are": "null (never an assumed score)"
   },
   "scorecard": {
     "coverage": 0.0,

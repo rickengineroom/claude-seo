@@ -3,8 +3,8 @@
 ## Table of Contents
 1. [PageSpeed Insights v5](#pagespeed-insights-v5)
 2. [CrUX API (Daily)](#crux-api-daily)
-3. [CrUX History API (Weekly)](#crux-history-api-weekly)
-4. [Core Web Vitals Thresholds](#core-web-vitals-thresholds)
+3. [CrUX History API (Weekly)](crux-history-api.md#crux-history-api-weekly)
+4. [Core Web Vitals Thresholds](crux-history-api.md#core-web-vitals-thresholds)
 
 ---
 
@@ -96,6 +96,11 @@ Send the API key in the `X-Goog-Api-Key` header, not in the URL.
 | Metric | Type | Notes |
 |--------|------|-------|
 | `largest_contentful_paint` | int (ms) | Core Web Vital |
+| `largest_contentful_paint_resource_type` | fractions | LCP resource type, added January 2025 |
+| `largest_contentful_paint_image_time_to_first_byte` | int (ms) | LCP image subpart, added January 2025 |
+| `largest_contentful_paint_image_resource_load_delay` | int (ms) | LCP image subpart, added January 2025 |
+| `largest_contentful_paint_image_resource_load_duration` | int (ms) | LCP image subpart, added January 2025 |
+| `largest_contentful_paint_image_element_render_delay` | int (ms) | LCP image subpart, added January 2025 |
 | `interaction_to_next_paint` | int (ms) | Core Web Vital (replaced FID) |
 | `cumulative_layout_shift` | **string** | Core Web Vital. **String-encoded!** Parse carefully. |
 | `first_contentful_paint` | int (ms) | |
@@ -135,7 +140,7 @@ Send the API key in the `X-Goog-Api-Key` header, not in the URL.
 - **CLS p75 is a string** (e.g., `"0.05"` not `0.05`). Always parse as float from string.
 - Last histogram bin has **no `end`** (extends to infinity).
 - Densities sum to approximately 1.0.
-- **404** = no data (insufficient Chrome traffic). Not an auth error.
+- **404** = no record for that exact key. www and non-www (and http/https) are separate origins: try the host variant and the origin before reporting insufficient Chrome traffic. Not an auth error.
 - Updated daily ~04:00 UTC with ~2 day lag.
 
 ### Rate Limits
@@ -144,65 +149,4 @@ Send the API key in the `X-Goog-Api-Key` header, not in the URL.
 
 ---
 
-## CrUX History API (Weekly)
-
-**Endpoint:** `POST https://chromeuxreport.googleapis.com/v1/records:queryHistoryRecord`
-
-Send the API key in the `X-Goog-Api-Key` header, not in the URL.
-
-Same request format as CrUX API. Returns up to **25 weekly collection periods**.
-
-### Response Differences from CrUX API
-
-Instead of single values, returns timeseries:
-
-```json
-{
-  "record": {
-    "metrics": {
-      "largest_contentful_paint": {
-        "histogramTimeseries": [
-          { "start": 0, "end": 2500, "densities": [0.70, 0.71, 0.72, ...] },
-          { "start": 2500, "end": 4000, "densities": [0.19, 0.18, 0.18, ...] },
-          { "start": 4000, "densities": [0.11, 0.11, 0.10, ...] }
-        ],
-        "percentilesTimeseries": {
-          "p75s": [2200, 2150, 2100, ...]
-        }
-      }
-    },
-    "collectionPeriods": [
-      {
-        "firstDate": { "year": 2025, "month": 9, "day": 29 },
-        "lastDate": { "year": 2025, "month": 10, "day": 26 }
-      },
-      ...
-    ]
-  }
-}
-```
-
-### NaN Handling
-- `"NaN"` string for densities in ineligible periods
-- `null` for percentile values in ineligible periods
-- Always check for these before numeric operations
-
-### Update Schedule
-- Updated **Mondays** ~04:00 UTC
-- Each period = 28-day rolling average ending on a Sunday
-
----
-
-## Core Web Vitals Thresholds
-
-Current as of March 2026. INP replaced FID on March 12, 2024.
-
-| Metric | Good | Needs Improvement | Poor |
-|--------|------|-------------------|------|
-| **LCP** | ≤ 2,500ms | 2,500–4,000ms | > 4,000ms |
-| **INP** | ≤ 200ms | 200–500ms | > 500ms |
-| **CLS** | ≤ 0.1 | 0.1–0.25 | > 0.25 |
-| **FCP** | ≤ 1,800ms | 1,800–3,000ms | > 3,000ms |
-| **TTFB** | ≤ 800ms | 800–1,800ms | > 1,800ms |
-
-FID was fully removed from Chrome tools (CrUX, PSI, Lighthouse) on September 9, 2024. Never reference FID in outputs.
+CrUX History API (weekly) and Core Web Vitals thresholds: `crux-history-api.md`.

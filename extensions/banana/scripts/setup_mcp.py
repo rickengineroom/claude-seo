@@ -2,30 +2,30 @@
 """
 Setup script for Claude Banana MCP server in Claude Code.
 
-Configures @ycse/nanobanana-mcp in Claude Code's settings.json
+Configures @ycse/nanobanana-mcp in Claude Code's ~/.claude.json
 with the user's Google AI API key.
 
 Usage:
-    python3 setup_mcp.py                    # Interactive (prompts for key)
-    python3 setup_mcp.py --key YOUR_KEY     # Non-interactive
-    python3 setup_mcp.py --check            # Verify existing setup
-    python3 setup_mcp.py --remove           # Remove MCP config
-    python3 setup_mcp.py --help             # Show usage
+    py setup_mcp.py                    # Interactive (prompts for key)
+    py setup_mcp.py --key YOUR_KEY     # Non-interactive
+    py setup_mcp.py --check            # Verify existing setup
+    py setup_mcp.py --remove           # Remove MCP config
+    py setup_mcp.py --help             # Show usage
 """
 
 import json
-import sys
 import os
+import sys
+import tempfile
 from pathlib import Path
 
-SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
+SETTINGS_PATH = Path.home() / ".claude.json"
 MCP_NAME = "nanobanana-mcp"
-MCP_PACKAGE = "@ycse/nanobanana-mcp"
-DEFAULT_MODEL = "gemini-3.1-flash-image-preview"
+MCP_PACKAGE = "@ycse/nanobanana-mcp@1.1.1"
 
 
 def load_settings() -> dict:
-    """Load Claude Code settings.json."""
+    """Load Claude Code ~/.claude.json."""
     if not SETTINGS_PATH.exists():
         return {}
     with open(SETTINGS_PATH, "r") as f:
@@ -33,10 +33,28 @@ def load_settings() -> dict:
 
 
 def save_settings(settings: dict) -> None:
-    """Save Claude Code settings.json."""
+    """Save Claude Code ~/.claude.json atomically.
+
+    ~/.claude.json is shared with Claude Code itself and other installers, so
+    a write is staged to a temp file in the same directory and swapped into
+    place with ``os.replace`` (atomic on POSIX and Windows). This avoids a
+    reader ever observing a truncated or partially written file, and avoids
+    corrupting the file if this process is interrupted mid-write.
+    """
     SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(SETTINGS_PATH, "w") as f:
-        json.dump(settings, f, indent=2)
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=".claude.json.", suffix=".tmp", dir=str(SETTINGS_PATH.parent)
+    )
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(settings, f, indent=2)
+        os.replace(tmp_path, SETTINGS_PATH)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
     print(f"Settings saved to {SETTINGS_PATH}")
 
 
@@ -47,11 +65,12 @@ def check_setup() -> bool:
     if MCP_NAME in servers:
         env = servers[MCP_NAME].get("env", {})
         key = env.get("GOOGLE_AI_API_KEY", "")
-        masked = key[:8] + "..." + key[-4:] if len(key) > 12 else "(not set)"
+        masked = "..." + key[-4:] if len(key) > 12 else "(not set)"
         print(f"MCP server '{MCP_NAME}' is configured.")
         print(f"  Package: {MCP_PACKAGE}")
         print(f"  API Key: {masked}")
-        print(f"  Model:   {env.get('NANOBANANA_MODEL', DEFAULT_MODEL)}")
+        model = env.get("NANOBANANA_MODEL")
+        print(f"  Model:   {model if model else 'MCP package default'}")
         return True
     print(f"MCP server '{MCP_NAME}' is NOT configured.")
     return False
@@ -87,23 +106,22 @@ def setup_mcp(api_key: str) -> None:
         "args": ["-y", MCP_PACKAGE],
         "env": {
             "GOOGLE_AI_API_KEY": api_key,
-            "NANOBANANA_MODEL": DEFAULT_MODEL,
         },
     }
 
     save_settings(settings)
     print(f"\nMCP server '{MCP_NAME}' configured successfully!")
     print(f"  Package: {MCP_PACKAGE}")
-    print(f"  Model:   {DEFAULT_MODEL}")
-    print(f"\nRestart Claude Code for changes to take effect.")
-    print(f"Generated images will be saved to: ~/Documents/nanobanana_generated/")
+    print("  Model:   MCP package default")
+    print("\nRestart Claude Code for changes to take effect.")
+    print("Generated images will be saved to: ~/Documents/nanobanana_generated/")
 
 
 def main() -> None:
     args = sys.argv[1:]
 
     if "--help" in args or "-h" in args:
-        print("Usage: python3 setup_mcp.py [OPTIONS]")
+        print("Usage: py setup_mcp.py [OPTIONS]")
         print()
         print("Options:")
         print("  --key KEY        Provide API key non-interactively")
@@ -136,7 +154,7 @@ def main() -> None:
     if not api_key:
         print("Claude Banana - MCP Setup")
         print("=" * 40)
-        print(f"\nGet your free API key at: https://aistudio.google.com/apikey")
+        print("\nGet your free API key at: https://aistudio.google.com/apikey")
         print()
         try:
             api_key = input("Enter your Google AI API key: ")

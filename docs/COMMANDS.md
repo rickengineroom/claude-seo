@@ -4,7 +4,42 @@
 
 All Claude SEO commands start with `/seo` followed by a subcommand.
 
+## Page-fetching script
+
+Use `"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run fetch_page.py https://example.com --json` for structured
+retrieval. Both the raw path (default, `--render never`) and the rendered path
+(`--render auto` or `--render always`) emit JSON through the same
+`render_page._json_summary` contract, so the two share one key set: `url`,
+`status_code`, `content`, `raw_content`, `is_spa`, `extracted_text`,
+`publication_date`, `accessibility_tree`, `accessibility_error`,
+`accessibility_partial`, `headers`, `redirect_chain`, `console_errors`,
+`render_diagnostics`, `render_engine`, `render_ms`, `mode_used`, `error`,
+`structured_data`, and `truncation`. The raw path fills renderer-only fields
+(`is_spa`, `extracted_text`, `render_engine`, ...) with `None`/empty defaults.
+Fetch errors still emit JSON and exit 1; successful fetches exit 0. HTTP status
+codes are reported without changing this behavior.
+
+Pass `--max-text N` to cap the `content`, `raw_content`, and `extracted_text`
+fields at N characters each; `truncation.fields` reports the original and
+returned character counts per field. `--max-text 0` (default) keeps full text.
+
+Combine `--json --output page.html` to save successful HTML while keeping JSON
+on stdout. `output_written` indicates whether HTML was saved. On fetch errors,
+the output file is left untouched. Without `--json`, existing text output is
+unchanged.
+
 ## Command List
+
+### `/seo setup`
+
+Explicitly create or refresh the isolated Python runtime and Playwright Chromium.
+This is required once after a marketplace plugin install. Manual installers run
+the same setup automatically. It never installs packages globally.
+
+### `/seo doctor`
+
+Check runtime, dependency, and Chromium readiness without changing the system.
+Diagnostic output omits absolute paths and environment values.
 
 ### `/seo audit <url>`
 
@@ -18,7 +53,7 @@ Full website SEO audit with parallel analysis.
 **What it does:**
 1. Crawls up to 500 pages
 2. Detects business type
-3. Delegates to 7 specialist subagents in parallel
+3. Delegates to up to 17 specialist subagents in parallel (9 always-on + 8 conditional)
 4. Generates SEO Health Score (0-100)
 5. Creates prioritized action plan
 
@@ -142,13 +177,37 @@ AI Overviews / Generative Engine Optimization.
 
 ---
 
+### `/seo agentic [audit|fix|lighthouse|refresh] <url>`
+
+Agent readiness: how well AI agents that browse and act for people can read and use the site.
+
+**Examples:**
+```
+/seo agentic https://example.com
+/seo agentic lighthouse https://example.com
+/seo agentic fix https://example.com
+```
+
+**What it analyzes:**
+- Lighthouse Agentic Browsing result as Lighthouse computes it (X of N, N/A and informative audits excluded)
+- Accessibility tree for agents (the 33 axe rules Lighthouse uses, plus the local Agent-UX heuristic)
+- robots.txt groups per AI purpose (training, search, user-triggered) and Content-Signal
+- llms.txt, Markdown delivery (`Accept: text/markdown`, `.md` alternates), ai-catalog.json, `/.well-known` files
+- WebMCP tools and form annotations, labelled as a W3C Community Group draft
+
+`fix` drafts robots.txt Content-Signal lines, llms.txt, ai-catalog.json and WebMCP scaffolds for review; nothing is deployed.
+
+---
+
 ### `/seo images <url>`
 
-Image optimization analysis.
+Image optimization analysis. Subcommands: `serp <keyword>` (image SERP / visual-search analysis), `optimize <path>` (local file optimization + IPTC AI labeling).
 
-**Example:**
+**Examples:**
 ```
 /seo images https://example.com
+/seo images serp "running shoes"
+/seo images optimize ./hero.webp
 ```
 
 **What it checks:**
@@ -240,11 +299,12 @@ Competitor comparison page generation.
 
 ### `/seo hreflang [url]`
 
-Hreflang and international SEO audit and generation.
+Hreflang and international SEO audit and generation. Subcommand: `audit <directory-or-url>` (audit hreflang across a local build directory or a live URL set).
 
-**Example:**
+**Examples:**
 ```
 /seo hreflang https://example.com
+/seo hreflang audit ./dist
 ```
 
 **Capabilities:**
@@ -303,10 +363,13 @@ Maps intelligence: geo-grid rank tracking, GBP profile audits, review intelligen
 
 **Examples:**
 ```
-/seo maps geogrid "coffee shop austin tx"
-/seo maps audit https://www.google.com/maps/place/...
-/seo maps reviews <place_id>
-/seo maps competitors "auto repair denver" 5mi
+/seo maps "Joe's Coffee" "austin tx"
+/seo maps grid "coffee shop" "austin tx"
+/seo maps gbp "Joe's Coffee" "austin tx"
+/seo maps reviews "Joe's Coffee" "austin tx"
+/seo maps competitors "auto repair" "denver"
+/seo maps nap "Joe's Coffee" "austin tx"
+/seo maps schema "Joe's Coffee" "austin tx"
 ```
 
 **Capabilities:**
@@ -324,8 +387,11 @@ Backlink profile analysis with a 3-tier data cascade: free (Common Crawl + verif
 **Examples:**
 ```
 /seo backlinks https://example.com
+/seo backlinks gap https://example.com https://competitor.com
+/seo backlinks toxic https://example.com
+/seo backlinks new https://example.com
+/seo backlinks verify https://example.com --links known-links.txt
 /seo backlinks setup
-/seo backlinks verify https://example.com
 ```
 
 **What it analyzes:**
@@ -338,13 +404,16 @@ Backlink profile analysis with a 3-tier data cascade: free (Common Crawl + verif
 
 ---
 
-### `/seo cluster <seed-keyword>`
+### `/seo cluster [command] <seed-keyword>`
 
-SERP-based semantic topic clustering for content architecture planning. Built on the Pro Hub Challenge Semantic Cluster Engine.
+SERP-based semantic topic clustering for content architecture planning. Built on the Pro Hub Challenge Semantic Cluster Engine. Subcommands: `plan <seed>` (full planning workflow; also `plan --from strategy` to import a `/seo plan` output), `execute` (create content via claude-blog or output briefs), `map` (regenerate the interactive visualization). Bare `/seo cluster <seed>` is shorthand for `plan`.
 
-**Example:**
+**Examples:**
 ```
-/seo cluster "claude code skills"
+/seo cluster plan "claude code skills"
+/seo cluster plan --from strategy
+/seo cluster execute
+/seo cluster map
 ```
 
 **What it produces:**
@@ -359,11 +428,14 @@ SERP-based semantic topic clustering for content architecture planning. Built on
 
 ### `/seo sxo <url>`
 
-Search Experience Optimization: SERP backwards analysis, page-type mismatch detection, persona scoring.
+Search Experience Optimization: SERP backwards analysis, page-type mismatch detection, persona scoring. Subcommands: `<url> <keyword>` (analyze for a specific keyword), `wireframe <url>` (IST/SOLL wireframe), `personas <url>` (persona-only scoring, skips SERP).
 
-**Example:**
+**Examples:**
 ```
 /seo sxo https://example.com/blog/how-to-x
+/seo sxo https://example.com/page "target keyword"
+/seo sxo wireframe https://example.com/page
+/seo sxo personas https://example.com/page
 ```
 
 **What it produces:**
@@ -394,11 +466,14 @@ SEO drift monitoring. Captures baselines of SEO-critical page elements and compa
 
 ### `/seo ecommerce <url>`
 
-E-commerce SEO covering product schema, marketplace intelligence, and pricing gap analysis.
+E-commerce SEO covering product schema, marketplace intelligence, and pricing gap analysis. Subcommands: `products <keyword>` (Google Shopping competitive analysis), `gaps <domain>` (organic-vs-Shopping visibility gap), `schema <url>` (product schema validation + enhancement).
 
-**Example:**
+**Examples:**
 ```
 /seo ecommerce https://shop.example.com/product/x
+/seo ecommerce products "running shoes"
+/seo ecommerce gaps shop.example.com
+/seo ecommerce schema https://shop.example.com/product/x
 ```
 
 **What it analyzes:**
@@ -419,7 +494,11 @@ FLOW framework integration: evidence-led prompts for the Find, Leverage, Optimiz
 ```
 /seo flow find "topic"
 /seo flow leverage https://example.com
-/seo flow optimize "target keyword"
+/seo flow optimize https://example.com/page
+/seo flow win https://example.com/page
+/seo flow local https://example.com
+/seo flow prompts
+/seo flow sync
 ```
 
 **41 prompts** sourced from FLOW (CC BY 4.0). Each prompt is grounded in a specific evidence source (SERP data, GSC, GA4, customer interviews) with attribution preserved.
@@ -430,15 +509,50 @@ FLOW framework integration: evidence-led prompts for the Find, Leverage, Optimiz
 
 Google SEO APIs. 4-tier credential system covering PageSpeed Insights, CrUX, CrUX History, Search Console, URL Inspection, Indexing API, GA4, and Keyword Planner.
 
-**Examples:**
+**Setup & reporting:**
 ```
-/seo google setup
-/seo google check
-/seo google psi https://example.com
-/seo google gsc-queries https://example.com
-/seo google indexing-notify https://example.com
-/seo google ga4-organic
-/seo google report full
+/seo google setup                      # Configure/check credentials
+/seo google quotas                     # Show per-API quota usage
+/seo google report full                # Generate full PDF/HTML report
+/seo google report cwv-audit           # CWV-focused report
+/seo google report gsc-performance     # Search performance report
+/seo google report indexation          # Indexation status report
+```
+
+**PageSpeed / CrUX (Tier 0):**
+```
+/seo google pagespeed <url>            # PageSpeed Insights (lab) + CWV
+/seo google crux <url>                 # CrUX field data
+/seo google crux-history <url>         # 25-week CrUX history
+```
+
+**Search Console / Indexing (Tier 1):**
+```
+/seo google gsc <property>             # Search Analytics (clicks/impressions/CTR/position)
+/seo google inspect <url>              # URL Inspection (indexation status)
+/seo google inspect-batch <file>       # Batch URL inspection
+/seo google sitemaps <property>        # List submitted sitemaps + status
+/seo google index <url>                # Indexing API notify
+/seo google index-batch <file>         # Batch indexing notify
+```
+Use Indexing API commands only for pages with JobPosting or BroadcastEvent embedded in VideoObject. Route ordinary URLs to URL Inspection or sitemaps; `URL_UPDATED` does not guarantee indexing.
+
+**GA4 (Tier 2):**
+```
+/seo google ga4 [property-id]          # Organic traffic report
+/seo google ga4-pages [property-id]    # Top organic landing pages
+```
+
+**NLP / Keywords / YouTube:**
+```
+/seo google nlp <url-or-text>          # NLP content analysis
+/seo google entities <url-or-text>     # Entity extraction
+/seo google entity <query>             # Entity lookup
+/seo google keywords <seed>            # Keyword Planner ideas (Tier 3)
+/seo google volume <keywords>          # Keyword search volume (Tier 3)
+/seo google youtube <query>            # YouTube search
+/seo google youtube-video <video_id>   # YouTube video analysis
+/seo google safety <url>               # Safe Browsing check
 ```
 
 **Tiers:**
@@ -486,24 +600,27 @@ Full-site crawling and URL discovery via Firecrawl MCP (extension).
 /seo firecrawl crawl https://example.com
 /seo firecrawl map https://example.com
 /seo firecrawl scrape https://example.com/page
+/seo firecrawl search "query" https://example.com
 ```
 
 **What it does:**
 - `crawl` walks the site discovering URLs and capturing content
 - `map` returns the full URL inventory for a domain
 - `scrape` extracts a single page in a model-friendly format
+- `search` searches within a crawled site for a query
 
 ---
 
 ### `/seo dataforseo [command]`
 
-Live SEO data via DataForSEO MCP server (extension). 22 commands across 9 API modules.
+Live SEO data via DataForSEO MCP server (extension). 23 data commands across 9 API modules, plus cost-tracking commands.
 
 **Prerequisites:** DataForSEO extension installed (`./extensions/dataforseo/install.sh`)
 
 **SERP Analysis:**
 ```
 /seo dataforseo serp <keyword>              # Google organic results (also Bing/Yahoo)
+/seo dataforseo serp-images <keyword>       # Image elements in the organic SERP (no Images tool on the pinned server)
 /seo dataforseo serp-youtube <keyword>      # YouTube search results
 /seo dataforseo youtube <video_id>          # YouTube video deep analysis
 ```
@@ -547,6 +664,94 @@ Live SEO data via DataForSEO MCP server (extension). 22 commands across 9 API mo
 /seo dataforseo ai-mentions <keyword>       # LLM mention tracking
 ```
 
+**Cost Tracking:**
+```
+/seo dataforseo costs today                            # Today's DataForSEO spend
+/seo dataforseo costs summary                          # Spend summary across periods
+/seo dataforseo costs config --mode threshold --threshold 0.50   # Set cost-control mode/threshold
+```
+
+---
+
+### `/seo ahrefs [command] <url|topic>`
+
+Ahrefs API metrics (extension). **Prerequisites:** Ahrefs extension installed (`./extensions/ahrefs/install.sh`).
+```
+/seo ahrefs metrics <url>       # DR/UR, referring-domain count, organic traffic estimate
+/seo ahrefs backlinks <url>     # Top referring domains, anchor distribution, follow/nofollow ratio
+/seo ahrefs organic <url>       # Organic keywords, ranking distribution, traffic by country
+/seo ahrefs content <topic>     # Content Explorer top results, social shares, referring domains
+```
+
+---
+
+### `/seo bing [command]`
+
+Bing Webmaster Tools + IndexNow (extension). **Prerequisites:** Bing extension installed (`./extensions/bing-webmaster/install.sh`).
+```
+/seo bing links <url>                 # Inbound links from Bing Webmaster
+/seo bing compare <urlA> <urlB>       # Compare two URLs' Bing link profiles
+/seo bing submit <url> --host <host>                # IndexNow single-URL submit (requires key)
+/seo bing submit-batch <file> --host <host>         # IndexNow batch submit (requires key)
+/seo bing verify-indexnow --host <host>             # Verify the IndexNow key is published
+```
+
+---
+
+### `/seo matomo [command] [site-id]`
+
+Matomo Reporting API (extension). **Prerequisites:** Matomo extension installed (`./extensions/matomo/install.sh`), which writes the instance URL, API token, and optional default site ID to `~/.config/claude-seo/matomo.json` (0600). `MATOMO_URL`, `MATOMO_API_TOKEN`, and `MATOMO_SITE_ID` in the environment override the file. Works against self-hosted Matomo or Matomo Cloud; an instance on a private address must be named in `CLAUDE_SEO_LOCAL_TARGETS`.
+
+Use as a GA4 alternative or supplement when you want full data ownership, no Google dependency, or privacy-first analytics.
+```
+/seo matomo check                  # Probe credentials and confirm Matomo version
+/seo matomo organic [site-id]      # Organic traffic trend (28d) + top landing pages
+/seo matomo top-pages              # Top organic landing pages only
+/seo matomo device                 # Visits by device type
+/seo matomo country                # Visits by country
+/seo matomo referrers              # Channel + search-engine breakdown
+/seo matomo keywords               # Organic search keywords (often "(not provided)")
+```
+
+All commands accept `--days` (default 28), `--limit` (default 50),
+`--site-id`, and `--json`. The audit orchestrator spawns the
+`seo-matomo` agent automatically when credentials are present.
+
+---
+
+### `/seo profound [command] <brand>`
+
+LLM brand-citation tracking via Profound (extension). **Prerequisites:** Profound extension installed.
+```
+/seo profound citations <brand>     # Citation rate per LLM + 30-day trend
+/seo profound prompts <brand>       # Top prompts that surface (or miss) the brand
+/seo profound competitors <brand>   # Brands cited alongside yours for the same prompts
+/seo profound alerts <brand>        # Spike/drop alerts vs 7-day baseline
+```
+
+---
+
+### `/seo seranking [command] <brand|keyword|url>`
+
+AI-visibility + SERP via SE Ranking (extension). **Prerequisites:** SE Ranking extension installed.
+```
+/seo seranking ai-visibility <brand>   # Share-of-voice across ChatGPT/Gemini/Perplexity/AI Overviews/AI Mode
+/seo seranking serp <keyword>          # Top 100 organic positions + SERP features
+/seo seranking backlinks <url>         # Backlink profile (free-tier alternative to Ahrefs/DataForSEO)
+/seo seranking competitors <url>       # Top 10 organic competitors + shared-keyword gaps
+```
+
+---
+
+### `/seo unlighthouse <url>`
+
+Multi-page Lighthouse audit via Unlighthouse (extension, MIT, no API quota). **Prerequisites:** Node 22.18+ and the unlighthouse npm package (0.19.1) (`./extensions/unlighthouse/install.sh`).
+```
+/seo unlighthouse https://example.com
+/seo unlighthouse https://example.com --device desktop
+/seo unlighthouse https://example.com --max-routes 50 --output-dir ./reports
+```
+
 ---
 
 ## Quick Reference
@@ -563,6 +768,7 @@ Live SEO data via DataForSEO MCP server (extension). 22 commands across 9 API mo
 | `/seo sitemap generate` | Create new sitemap with industry templates |
 | `/seo images <url>` | Image optimization |
 | `/seo geo <url>` | AI search optimization (GEO) |
+| `/seo agentic <url>` | Agent readiness (Lighthouse Agentic Browsing, AI agent access, WebMCP) |
 | `/seo local <url>` | Local SEO (GBP, citations, reviews) |
 | `/seo maps [command]` | Maps intelligence (geo-grid, GBP audit, competitors) |
 | `/seo backlinks <url>` | Backlink profile analysis |
@@ -579,3 +785,9 @@ Live SEO data via DataForSEO MCP server (extension). 22 commands across 9 API mo
 | `/seo dataforseo [command]` | Live SEO data (extension) |
 | `/seo image-gen [use-case] <desc>` | AI image generation (extension) |
 | `/seo firecrawl [command] <url>` | Full-site crawling (extension) |
+| `/seo ahrefs [command] <url>` | Backlinks, organic keywords, and content data via the official Ahrefs MCP (extension) |
+| `/seo seranking [command]` | AI Share-of-Voice across ChatGPT, Gemini, Perplexity, AI Overviews, AI Mode (extension) |
+| `/seo profound [command]` | LLM citation tracking with time-series data (extension) |
+| `/seo bing [command] <url>` | Bing Webmaster Tools + IndexNow URL submission (extension) |
+| `/seo matomo [command] [args]` | Matomo Reporting API: GA4 alternative or complement (extension) |
+| `/seo unlighthouse <url>` | Multi-page Lighthouse runner, runs locally (extension) |

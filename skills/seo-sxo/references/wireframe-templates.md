@@ -25,13 +25,18 @@ IST: [URL]
 │   └── [section]: "[summary]" (~XXX words)
 ├── SUPPORTING
 │   └── [element]: "[description]"
-└── FOOTER — [elements present]
+└── FOOTER: [elements present]
 
 Missing from SERP expectations:
 - [element]: [why it matters]
 ```
 
 ## SOLL Templates by Page Type
+
+`faq` sections below are on-page questions answered in the body. Do not attach
+FAQPage or HowTo markup to them: neither produces a Google result feature any
+more (FAQ rich results stopped 7 May 2026; HowTo ended 2023). Each answered
+sub-question is a section of this page, never a separate page.
 
 ### 1. Landing Page
 
@@ -47,7 +52,7 @@ Missing from SERP expectations:
 <section class="how-it-works"> 3-step process with numbered icons </section>
 <section class="testimonial"> Quote + photo + name + title + company </section>
 <section class="pricing"> 2-3 tiers, recommended highlighted, annual toggle </section>
-<section class="faq"> 5-7 PAA questions, FAQPage schema </section>
+<section class="faq"> FAQ content from 5-7 PAA questions </section>
 <section class="final-cta"> Repeat hero CTA with urgency </section>
 ```
 
@@ -58,12 +63,12 @@ Missing from SERP expectations:
   <header> H1 | Author + photo + credentials | Date + Updated | Reading time </header>
   <nav class="toc"> Jump links to H2 sections </nav>
   <section class="intro"> Hook + thesis + TL;DR box (above fold) </section>
-  <section> H2: [cluster 1] — address PAA #1 </section>
-  <section> H2: [cluster 2] — address PAA #2 </section>
-  <section> H2: [cluster 3] — comparison table if SERP warrants </section>
-  <section> H2: [cluster 4] — image/diagram </section>
+  <section> H2: [cluster 1] (address PAA #1) </section>
+  <section> H2: [cluster 2] (address PAA #2) </section>
+  <section> H2: [cluster 3] (comparison table if SERP warrants) </section>
+  <section> H2: [cluster 4] (image/diagram) </section>
   <section class="expert-quote"> Blockquote from SME (E-E-A-T) </section>
-  <section> H2: FAQ — remaining PAA questions </section>
+  <section> H2: FAQ (remaining PAA questions) </section>
   <footer> Author bio | Related posts (3) | CTA: newsletter </footer>
 </article>
 ```
@@ -93,8 +98,8 @@ Missing from SERP expectations:
 </header>
 <section class="matrix"> Feature table: check/cross/partial icons </section>
 <section class="reviews">
-  H2: [A] — pros, cons, best for, pricing
-  H2: [B] — pros, cons, best for, pricing
+  H2: [A] (pros, cons, best for, pricing)
+  H2: [B] (pros, cons, best for, pricing)
 </section>
 <section class="verdict"> Persona recs: "Choose A if...", "Choose B if..." </section>
 <section class="faq"> Comparison PAA questions </section>
@@ -113,11 +118,11 @@ Missing from SERP expectations:
 <section class="cta"> Repeat CTA + contact form </section>
 ```
 
-### 6. Local Page
+### 6. Location Page
 
 ```
 <section class="hero">
-  H1: [service] in [city] — [business name]
+  H1: [service] in [city]: [business name]
   CTA: "Call Now" + "Get Directions" | NAP displayed
 </section>
 <section class="map"> Google Map embed + landmark directions </section>
@@ -131,11 +136,11 @@ Missing from SERP expectations:
 
 ```
 <section class="tool" id="tool">
-  H1: Free [Tool Name] — [purpose]
+  H1: Free [Tool Name]: [purpose]
   Input: [fields/dropdowns/upload] (ABOVE FOLD)
   CTA: "Calculate" / "Generate" / "Check" | Output zone
 </section>
-<section class="instructions"> How to Use — 3 steps max </section>
+<section class="instructions"> How to Use (3 steps max) </section>
 <section class="explanation"> Educational depth for SEO </section>
 <section class="faq"> Tool-specific PAA </section>
 <section class="related-tools"> 3-4 related tools </section>
@@ -153,6 +158,16 @@ Missing from SERP expectations:
 <section class="proof"> Case study or testimonial </section>
 <section class="cta"> Match journey stage from SERP analysis </section>
 <section class="faq"> Mix of educational + product PAA </section>
+```
+
+### 9. Category / Collection
+
+```
+<section class="category-head"> H1: [category name] | 1-2 line intro with the buying fact that matters </section>
+<section class="filters"> Filters matching the attributes searchers use (size, material, price) </section>
+<section class="grid"> Product cards: image, name, price, availability (crawlable links) </section>
+<section class="guidance"> Short buying guidance answering the result page's sub-questions </section>
+<section class="related"> Links to sibling and child categories </section>
 ```
 
 ## Placeholder Rules

@@ -58,7 +58,7 @@
 - **Certification**: For product certifications (Energy Star, safety, organic). Replaced EnergyConsumptionDetails (April 2025). Use `hasCertification` on Product.
 - **OfferShippingDetails**: Include shipping rate, handling time, and transit time. Critical for Merchant Center eligibility.
 
-> **Google Merchant Center Free Listings:** Products can appear in Google Shopping for free. Ensure Product structured data is in the initial server-rendered HTML (not JavaScript-injected) with required properties: `name`, `image`, `price`, `priceCurrency`, `availability`.
+> **Google Merchant Center Free Listings:** Products can appear in Google Shopping for free. Ensure a purchase page and Product structured data in the initial server-rendered HTML (not JavaScript-injected): Product with `name`, `image`, and `offers`; Offer with `price`, `priceCurrency`, `availability`, and `url` as applicable.
 
 > **JS Rendering Note:** Product structured data should be in initial server-rendered HTML: not dynamically injected via JavaScript (per December 2025 Google JS SEO guidance).
 
@@ -101,7 +101,7 @@
 - Care instructions
 - Customer reviews
 
-### Category Pages (min 400 words)
+### Category Pages (intro length set by what ranking category pages carry, not a fixed word count)
 - Category introduction
 - Buying guide excerpt
 - Featured products
@@ -111,9 +111,12 @@
 ## Technical Considerations
 
 ### Pagination
-- Use rel="next"/rel="prev" or load-more
-- Ensure all products are crawlable
-- Canonical to main category page
+- Give each paginated page its own URL (for example `?page=2`) and a
+  self-referencing canonical; do not canonicalise page 2+ to page 1
+- Link pages sequentially with crawlable `<a href>` links; load-more and
+  infinite scroll need a paginated URL behind them
+- Google no longer uses `rel="next"` / `rel="prev"` (other engines may)
+- Source: https://developers.google.com/search/docs/specialty/ecommerce/pagination-and-incremental-page-loading
 
 ### Faceted Navigation
 - Noindex filter combinations that create duplicate content
