@@ -139,7 +139,9 @@ try {
 # Set paths
 $SkillDir = "$env:USERPROFILE\.claude\skills\seo"
 $AgentDir = "$env:USERPROFILE\.claude\agents"
-$RepoUrl = "https://github.com/AgriciDaniel/claude-seo"
+# Rick's fork: CLAUDE_SEO_REPO lets the installer clone the local patched checkout
+# (e.g. $env:CLAUDE_SEO_REPO = "$env:USERPROFILE\claude-seo"; $env:CLAUDE_SEO_TAG = 'rick/v2.5.0').
+$RepoUrl = if ($env:CLAUDE_SEO_REPO) { $env:CLAUDE_SEO_REPO } else { "https://github.com/AgriciDaniel/claude-seo" }
 # Pin to a specific release tag to prevent silent updates from main.
 # This default MUST be bumped on every release. CI guard
 # (tests/test_manifest_consistency.py) enforces this matches plugin.json.
