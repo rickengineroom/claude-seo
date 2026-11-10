@@ -745,7 +745,7 @@ AI-visibility + SERP via SE Ranking (extension). **Prerequisites:** SE Ranking e
 
 ### `/seo unlighthouse <url>`
 
-Multi-page Lighthouse audit via Unlighthouse (extension, MIT, no API quota). **Prerequisites:** Node 18+ and the unlighthouse npm package (`./extensions/unlighthouse/install.sh`).
+Multi-page Lighthouse audit via Unlighthouse (extension, MIT, no API quota). **Prerequisites:** Node 22.18+ and the unlighthouse npm package (0.19.1) (`./extensions/unlighthouse/install.sh`).
 ```
 /seo unlighthouse https://example.com
 /seo unlighthouse https://example.com --device desktop

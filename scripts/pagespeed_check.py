@@ -367,9 +367,12 @@ def query_crux(
 
         if resp.status_code == 404:
             target_type = "origin" if is_origin else "URL"
+            result["not_found"] = True
             result["error"] = (
-                f"No CrUX data for this {target_type}. "
-                "The site likely has insufficient Chrome traffic volume for eligibility."
+                f"No CrUX data for this exact {target_type} key. CrUX keys are exact: "
+                "www and non-www (and http/https) are separate origins, so try the "
+                "host variant before concluding anything. If every variant returns "
+                "404, the site likely has insufficient Chrome traffic volume for eligibility."
             )
             return result
 
@@ -443,6 +446,65 @@ def query_crux(
     return result
 
 
+def _host_variant(url_or_origin: str) -> Optional[str]:
+    """Swap www./non-www. on the host; None for IP hosts or hosts without a dot."""
+    parsed = urlparse(url_or_origin)
+    host = parsed.hostname or ""
+    if not host or "." not in host or host.replace(".", "").isdigit():
+        return None
+    new_host = host[4:] if host.startswith("www.") else f"www.{host}"
+    netloc = new_host if parsed.port is None else f"{new_host}:{parsed.port}"
+    return parsed._replace(netloc=netloc).geturl()
+
+
+def query_crux_with_fallback(
+    url_or_origin: str,
+    api_key: str,
+    form_factor: Optional[str] = None,
+) -> dict:
+    """Query CrUX, falling back through host variant and origin keys on 404.
+
+    Order: the exact target, the www/non-www variant of the target, then (for
+    URLs) the origin and the variant origin. Stops at the first record found.
+    ``attempts`` lists every key tried with its outcome.
+    """
+    parsed = urlparse(url_or_origin)
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    candidates = [url_or_origin, _host_variant(url_or_origin)]
+    if parsed.path not in ("", "/") or parsed.query:
+        candidates += [origin, _host_variant(origin)]
+    attempts = []
+    first = None
+    seen = set()
+    for key in candidates:
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        res = query_crux(key, api_key, form_factor=form_factor)
+        attempts.append({"key": key, "found": not res.get("error"),
+                         "error": res.get("error")})
+        if first is None:
+            first = res
+        if not res.get("error"):
+            if key != url_or_origin:
+                res["note"] = (
+                    f"No CrUX record for {url_or_origin}; showing {key}. "
+                    "Check which host is canonical before comparing to other data."
+                )
+            res["attempts"] = attempts
+            return res
+        if not res.get("not_found"):
+            break  # auth, rate limit or validation error: do not keep trying
+    first = first or {"target": url_or_origin, "metrics": {}, "error": "No CrUX query made."}
+    first["attempts"] = attempts
+    if first.get("not_found") and len(attempts) > 1:
+        first["error"] = (
+            "No CrUX record for any key tried (" + ", ".join(a["key"] for a in attempts) + "). "
+            "The site likely has insufficient Chrome traffic volume for eligibility."
+        )
+    return first
+
+
 def combined_check(
     url: str,
     api_key: Optional[str] = None,
@@ -474,18 +536,10 @@ def combined_check(
         if psi_result.get("error"):
             result["error"] = psi_result["error"]
 
-    # CrUX (separate call for accurate field data)
+    # CrUX (separate call for accurate field data). On 404 try the www/non-www
+    # variant and the origin before reporting "insufficient traffic".
     if api_key:
-        crux_result = query_crux(url, api_key)
-        result["crux"] = crux_result
-        # Also try origin-level if URL-level has no data
-        if crux_result.get("error") and "insufficient" in crux_result.get("error", ""):
-            parsed = urlparse(url)
-            origin = f"{parsed.scheme}://{parsed.netloc}"
-            origin_result = query_crux(origin, api_key)
-            if not origin_result.get("error"):
-                result["crux"] = origin_result
-                result["crux"]["note"] = "URL-level data unavailable; showing origin-level data"
+        result["crux"] = query_crux_with_fallback(url, api_key)
 
     return result
 
@@ -534,7 +588,7 @@ def main():
         if not api_key:
             print("Error: CrUX API requires an API key. Use --api-key or configure GOOGLE_API_KEY.", file=sys.stderr)
             sys.exit(1)
-        result = query_crux(args.url, api_key, form_factor=args.form_factor)
+        result = query_crux_with_fallback(args.url, api_key, form_factor=args.form_factor)
     elif args.psi_only:
         strategies = ["mobile", "desktop"] if args.strategy == "both" else [args.strategy]
         result = {"psi": {}}

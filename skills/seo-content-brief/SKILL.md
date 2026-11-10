@@ -8,7 +8,7 @@ description: >
   "blog brief", "service page brief", "brief for", "writing brief",
   "content plan", or "outline for".
 user-invocable: true
-argument-hint: "[url-or-keyword] [page-type]"
+argument-hint: "[url-or-keyword] [page-type] [--market <semrush-database>]"
 license: MIT
 metadata:
   author: puneetindersingh
@@ -43,29 +43,65 @@ Generate research-backed content briefs that help writers produce pages capable 
 - Fetch the sitemap to discover all existing pages, categories, and services
 - This context is critical for the Website Relevance Rule (see below)
 
-### 3. Analyse SERPs
+### 3. Read the Full Result Page (classify first)
 
-- Identify the top 5 ranking pages for the target keyword
-- Filter out non-competitors (Wikipedia, Reddit, Pinterest, Amazon, YouTube, government sites, SEO tool pages, job boards, directories, news aggregators, social platforms). See `references/excluded-domains.md` for the full list.
-- Score each real competitor: Depth (1-10), Formatting (1-10), SEO (1-10), UX (1-10)
+Follow the seo-agency intent protocol (`intent-protocol.md` in the seo-agency
+skill's references folder). Market = a Semrush database code (`us`, `uk`, `au`,
+`sg`, `id`, ...); if not given, infer it from the site and state it.
+
+- Pull the ranked top 10 for the target keyword in the market: Semrush
+  `phrase_organic` (`database` = market, `display_limit: 10`, `export_columns:
+  [position, url, domain, triggered_serp_features]`). Pull volume and the Semrush
+  intent label with `phrase_this`. Record the data date. If an existing page is
+  being improved, add its Search Console queries (via `seo-google`).
+- Classify **every** result before removing anything, using the seo-sxo page-type
+  taxonomy: forum / community (Reddit, Quora), video (YouTube), marketplace or
+  product listing (Amazon, Etsy, Shopee), directory, category / collection,
+  product, comparison, guide, tool, location page.
+- **Stop rule:** if no ranked top 10 can be obtained for the market, say so and do
+  not state a rewarded format or intent; deliver only the parts that do not depend
+  on the result page (site context, internal links), labelled as such.
+
+### 4. Classify Search Intent (before filtering)
+
+Record two dated labels: the Semrush label (tool named) and the label judged from
+the classified top 10, in the rater-guideline vocabulary:
+
+- **Know** (learn: guides, explainers, forums); **Know Simple** (one short answer)
+- **Do** (buy, book, enquire, sign up, use a tool; Semrush Transactional, and
+  Commercial when product, category or comparison pages rank)
+- **Website** (a specific brand or page; Semrush Navigational)
+- **Visit-in-Person** (local pack or location pages rank)
+
+Then name the format Google rewards (long-form guide, listicle, comparison table,
+category page, product page, landing page, video, local pack) and the share of
+community, marketplace, video and directory results. A forum-heavy top 10 means
+searchers want first-hand experience; a marketplace-heavy top 10 means they want
+to compare offers. Record AI Overview present / absent / unknown as an attribute.
+Sub-questions from the result page become sections of this page, never separate
+pages.
+
+### 5. Score Real Competitors (filter after classifying)
+
+- Only now remove non-competitors from the **competitor scoring** set (Wikipedia,
+  Reddit, Pinterest, Amazon, YouTube, government sites, SEO tool pages, job boards,
+  directories, news aggregators, social platforms). See
+  `references/excluded-domains.md`. The removed results still count in Step 4.
+- Score the top 5 remaining competitors: Depth (1-10), Formatting (1-10), SEO (1-10), UX (1-10)
 - Identify three gap types:
   - **Topic gaps:** subtopics competitors miss entirely
   - **Depth gaps:** topics covered but shallow
   - **Quality gaps:** outdated info, no expert perspective, poor formatting
-- Calculate gap priority: `Impact x Competitive Advantage / Effort`
+- Rank gaps by expected impact and competitive advantage. Do not size effort,
+  hours or timings in the brief.
 
-### 4. Classify Search Intent
+### 6. Build the Brief
 
-- **Informational:** user wants to learn (guides, how-tos, definitions)
-- **Commercial:** user is researching before buying (comparisons, reviews, "best X")
-- **Transactional:** user is ready to act (buy, book, enquire, sign up)
-- **Navigational:** user is looking for a specific site or page
-
-Identify what SERP format Google rewards for this query: long-form guide, listicle, comparison table, landing page, FAQ, video, local pack.
-
-### 5. Build the Brief
-
-Apply the page-type template from `references/page-type-templates.md`, then customise based on competitor gaps and search intent.
+Apply the page-type template from `references/page-type-templates.md` that matches
+the page type the top 10 rewards (not the type the client asked for, if they
+differ; state the difference), then customise based on competitor gaps and search
+intent. When a `cluster-plan.json` exists, take the post's keyword, market,
+intent labels and `sections_from_fanout` from it.
 
 ## Critical Rules
 
@@ -89,8 +125,9 @@ For non-hub pages (single service page, blog post), use site structure to sugges
 
 ### Output Language Rules
 
-- Never mention researcher names, framework names, or tool names in the output (no "Ben Goodey method", "Frase.io formula", "Princeton GEO", "Clearscope", "Backlinko")
+- Never mention researcher names, framework names, or tool names as methods in the output (no "Ben Goodey method", "Frase.io formula", "Princeton GEO", "Clearscope", "Backlinko")
 - These are internal thinking tools only. The output must read as plain, professional advice.
+- Exception: data citations. Every volume figure and tool intent label names its source and date (for example "Semrush, au database, 2026-11-10").
 - Write for a business owner or content writer, not an SEO academic
 
 ## Keyword Placement
@@ -175,7 +212,9 @@ Always output in this exact structure:
 ## Content Brief: [Primary Keyword]
 
 ### Search Intent
-[Intent type, SERP format rewarded, target audience and knowledge level. 3-4 lines.]
+[Market. Semrush intent label (date). Result-page intent (source, date). SERP format
+rewarded, share of community / marketplace / video results, AI Overview present or
+not. Target audience and knowledge level. 3-5 lines.]
 
 ### Competitor Analysis
 | # | URL | Key H2 Sections | Est. Words | Score | Main Gap |
@@ -229,20 +268,32 @@ When the user asks for "just an outline" or "content outline" instead of a full 
 [Full H2/H3 outline with word counts, format notes, FS targets, keyword guidance, and a 1-2 sentence writing note per section]
 ```
 
-## DataForSEO Integration (Optional)
+## Data Sources
 
-If DataForSEO MCP tools are available, use `serp_organic_live_advanced` for real SERP data and competitor analysis, `kw_data_google_ads_search_volume` for keyword volume, `dataforseo_labs_bulk_keyword_difficulty` for difficulty scores, `dataforseo_labs_search_intent` for intent classification, and `on_page_content_parsing` for competitor content extraction.
+Semrush (connected) is the default source for volume, the tool intent label and the
+ranked top 10 per market; Search Console adds the queries an existing page earns.
 
-## Ahrefs Integration (Optional)
+### DataForSEO (Optional, not configured by default)
 
-If Ahrefs MCP tools are available, use `keywords-explorer-overview` for keyword volume and difficulty, `serp-overview` for SERP analysis, `site-explorer-organic-keywords` for existing keyword rankings, and `site-explorer-top-pages` for competitor page performance.
+If DataForSEO MCP tools are configured, `serp_organic_live_advanced` (with the
+market's location and language) can supply a live result page, `kw_data_google_ads_search_volume`
+volume, `dataforseo_labs_bulk_keyword_difficulty` difficulty, `dataforseo_labs_search_intent`
+a second tool intent label, and `on_page_content_parsing` competitor content.
+
+### Ahrefs (Optional, not connected)
+
+The Ahrefs MCP is not connected in this setup. Never wait on it or ask for it. If
+it is later authenticated in a session, `keywords-explorer-overview`, `serp-overview`,
+`site-explorer-organic-keywords` and `site-explorer-top-pages` can add a second
+opinion; label any Ahrefs figure with the tool name and date.
 
 ## Error Handling
 
 | Scenario | Action |
 |----------|--------|
 | Target URL unreachable | Report the error. Do not guess page content. Ask the user to verify the URL. |
-| No competitors found after filtering | Broaden the search to include partial-match competitors. Note the thin competitive landscape in the brief. |
+| No competitors found after filtering | Report the result-page make-up (for example "7 of 10 are forums and marketplaces") as the finding; broaden to partial-match competitors only for structure ideas. |
+| No ranked top 10 for the market | Stop rule: state it; do not name an intent or rewarded format. |
 | Sitemap not found | Proceed without site structure context. Note that internal linking suggestions may be incomplete. |
 | Page type not specified | Auto-detect from the keyword intent and SERP format. State the detected type in the brief. |
 | Target word count not specified | Use competitor average as the baseline. Note this in the outline. |

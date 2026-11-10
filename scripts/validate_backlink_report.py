@@ -16,6 +16,8 @@ Input: JSON file with backlink analysis data containing keys:
   - parsed_data: Homepage parse_html results
   - moz_data: Moz API results (optional)
   - bing_data: Bing Webmaster results (optional)
+  - semrush_data: Semrush connector pulls made by the main session (optional)
+  - dataforseo_data: DataForSEO results (optional)
 """
 
 import argparse
@@ -235,7 +237,7 @@ def validate_health_score(scoring_factors: dict) -> list:
 # Sources that can support a numeric backlink health score. Common Crawl is
 # deliberately absent: it provides rank/presence signals only, not the
 # referring-domain quality, anchor, or toxicity data a score implies.
-SCOREABLE_SOURCES = ("moz_data", "bing_data", "dataforseo_data")
+SCOREABLE_SOURCES = ("moz_data", "bing_data", "semrush_data", "dataforseo_data")
 
 # Finding sources that mean "we did not measure this".
 UNMEASURED_SOURCES = ("not-assessed", "not_assessed")

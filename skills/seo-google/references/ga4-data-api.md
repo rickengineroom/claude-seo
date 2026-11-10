@@ -66,6 +66,7 @@ The Google Analytics Data API v1beta provides programmatic access to GA4 report 
 | `deviceCategory` | `desktop`, `mobile`, `tablet` |
 | `hostName` | Domain name |
 | `pageReferrer` | Referrer URL |
+| `searchTerm` | Site search term (view_search_results events only) |
 
 ## SEO-Relevant Metrics
 
@@ -84,21 +85,7 @@ The Google Analytics Data API v1beta provides programmatic access to GA4 report 
 
 ## Filter Expressions
 
-### String Filter
-
-```json
-{
-  "filter": {
-    "fieldName": "sessionDefaultChannelGroup",
-    "stringFilter": {
-      "matchType": "EXACT",
-      "value": "Organic Search"
-    }
-  }
-}
-```
-
-Match types: `EXACT`, `BEGINS_WITH`, `ENDS_WITH`, `CONTAINS`, `FULL_REGEXP`, `PARTIAL_REGEXP`
+String filter: see `dimensionFilter` in the runReport request above. Match types: `EXACT`, `BEGINS_WITH`, `ENDS_WITH`, `CONTAINS`, `FULL_REGEXP`, `PARTIAL_REGEXP`
 
 ### Combining Filters
 
@@ -128,14 +115,40 @@ Up to 4 date ranges per request (for period-over-period comparison).
 
 ## Token-Based Quotas
 
-| Quota | Limit | Scope |
-|-------|-------|-------|
-| Daily tokens | 25,000 | Per property per project |
-| Hourly tokens | 5,000 | Per property per project |
-| Concurrent requests | 10 | Per property per project |
-| Hourly tokens (project-wide) | 1,250 | Per project per property per hour |
+Core reporting quotas (Google Analytics Data API quotas page, checked 2026-11-10):
 
-Set `returnPropertyQuota: true` to monitor consumption. Simple reports cost ~1-10 tokens; complex ones up to ~100.
+| Quota | Standard property | Analytics 360 property |
+|-------|-------------------|------------------------|
+| Tokens per property per day | 200,000 | 2,000,000 |
+| Tokens per property per hour | 40,000 | 400,000 |
+| Tokens per project per property per hour | 14,000 | 140,000 |
+| Concurrent requests per property | 10 | 50 |
+
+Set `returnPropertyQuota: true` to monitor consumption (`ga4_report.py` prints it).
+Simple reports cost ~1-10 tokens; complex ones up to ~100.
+
+## Reports in `ga4_report.py`
+
+| `--report` | Dimensions | Metrics | Default channel |
+|------------|-----------|---------|-----------------|
+| `organic`, `top-pages` | date / landingPage | sessions, users, views, bounce, engagement, keyEvents | Organic Search |
+| `device`, `country` | deviceCategory / country | sessions, users | Organic Search |
+| `ai-assistant` | landingPage, sessionSource | sessions, engagedSessions, keyEvents | AI Assistant |
+| `key-events` | landingPage, sessionDefaultChannelGroup | sessions, keyEvents[:name], sessionKeyEventRate[:name] | all |
+| `search-terms` | searchTerm (eventName = view_search_results) | eventCount, totalUsers | all |
+
+`--channel "<Default Channel Group>"` overrides the default; `--channel all` removes it.
+`keyEvents` replaced `conversions` in 2024; `keyEvents:purchase` reads one key event.
+
+## Landing page join trap
+
+`landingPage` is a path with no host and no query string (`landingPagePlusQueryString`
+keeps the query). `/about` and `/about/` are separate rows, and sessions that start
+without a page view are `(not set)`. Join to Search Console `page` on a key built the
+same way on both sides: path only, no query string, no trailing slash. `ga4_report.py`
+emits it as `page_key` and reports `(not set)` sessions in `landing_page_notes`;
+never join `(not set)` and never call an unmatched page "zero traffic" without checking
+its variants.
 
 ## Python Example
 

@@ -102,9 +102,12 @@ def query_history(
 
         if resp.status_code == 404:
             target_type = "origin" if is_origin else "URL"
+            result["not_found"] = True
             result["error"] = (
-                f"No CrUX history data for this {target_type}. "
-                "Insufficient Chrome traffic volume for eligibility."
+                f"No CrUX history data for this exact {target_type} key. www and "
+                "non-www (and http/https) are separate keys: try the host variant "
+                "first. If every variant returns 404, insufficient Chrome traffic "
+                "volume for eligibility."
             )
             return result
 

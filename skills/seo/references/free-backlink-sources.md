@@ -23,7 +23,7 @@ When merging data from multiple sources, apply confidence weights to each metric
 | Verification Crawler | 0.95 | Direct observation (binary: link exists or not) |
 | Moz API | 0.85 | Large index (45.5T links), established metrics, 3-day update lag |
 | Bing Webmaster | 0.70 | Smaller index (~15% of web), but authoritative for Bing-indexed pages |
-| Common Crawl | 0.50 | Domain-level only, quarterly updates, no anchor text |
+| Common Crawl | 0.50 | Domain-level rank and presence only, monthly releases, no anchor text or referring-domain list |
 
 **Composite formula:**
 ```
@@ -74,13 +74,19 @@ a report (`status: FAIL`) that carries a number in either case. See the
 
 ### Common Crawl Web Graph (Always Available)
 - **Data source:** `s3://commoncrawl/projects/hyperlinkgraph/`
-- **Releases:** Quarterly (e.g., cc-main-2025-18)
+- **Releases:** Monthly, each a rolling three-month window (e.g., cc-main-2026-aug-sep-oct;
+  cc-main-2025-26-dec-jan-feb across a year end). The script reads the list from
+  https://commoncrawl.org/web-graphs and falls back to a built-in list
 - **No auth needed:** Public data, free to download
-- **Data:** Domain-level in-degree, PageRank, harmonic centrality, referring domains
+- **Data:** Domain-level PageRank, harmonic centrality, their ranks, host count and
+  crawl presence. The script does not extract referring domains
 - **Command:** `"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run commoncrawl_graph.py`
 - **Cache:** `~/.cache/claude-seo/commoncrawl/` (90-day TTL)
-- **Blind spots:** No anchor text, no page-level data, monthly/quarterly freshness,
-  domain-level only (e.g., "nytimes.com links to example.com" but not which page)
+- **Blind spots:** No anchor text, no page-level data, no referring-domain list or
+  link counts, three-month window freshness
+- **Free-tier limit:** with no Moz or Bing key this is the only free source, so the
+  backlink health score is INSUFFICIENT DATA unless Semrush or another scoreable
+  source is present
 
 ### Verification Crawler (Always Available)
 - **No auth needed:** Uses existing fetch_page.py + parse_html.py

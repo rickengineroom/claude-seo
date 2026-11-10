@@ -140,7 +140,7 @@ Send the API key in the `X-Goog-Api-Key` header, not in the URL.
 - **CLS p75 is a string** (e.g., `"0.05"` not `0.05`). Always parse as float from string.
 - Last histogram bin has **no `end`** (extends to infinity).
 - Densities sum to approximately 1.0.
-- **404** = no data (insufficient Chrome traffic). Not an auth error.
+- **404** = no record for that exact key. www and non-www (and http/https) are separate origins: try the host variant and the origin before reporting insufficient Chrome traffic. Not an auth error.
 - Updated daily ~04:00 UTC with ~2 day lag.
 
 ### Rate Limits

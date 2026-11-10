@@ -1,14 +1,15 @@
 ---
 name: seo-firecrawl
 description: >
-  Full-site crawling, scraping, and site mapping via Firecrawl MCP.
-  Use when user says "crawl site", "map site", "full crawl",
-  "find all pages", "broken links", "site structure",
-  "discover pages", "JS rendering", or needs site-wide analysis.
+  Full-site crawling, scraping, site mapping and web search through the
+  authenticated Firecrawl CLI (firecrawl-cli 1.26.3). Use when user says
+  "crawl site", "map site", "full crawl", "find all pages", "broken links",
+  "site structure", "discover pages", "JS rendering", or needs site-wide
+  analysis. Single pages go through WebFetch or render_page.py first (free).
 user-invocable: true
 argument-hint: "[command] <url>"
 license: MIT
-compatibility: "Requires Firecrawl MCP server"
+compatibility: "Requires the Firecrawl CLI (npm install -g firecrawl-cli) signed in with firecrawl login"
 metadata:
   author: AgriciDaniel
   version: "2.5.0"
@@ -17,189 +18,154 @@ metadata:
 
 # Firecrawl Extension for Claude SEO
 
-This skill requires the Firecrawl extension to be installed:
+Firecrawl runs through its CLI from Bash. Every call spends credits from the signed-in
+account, so the free paths come first and every paid call is estimated before it runs.
+
+## Check availability (free)
+
 ```bash
-./extensions/firecrawl/install.sh
+firecrawl --version          # expect 1.26.3 or later
+firecrawl --status           # signed in, team, credits left
+firecrawl credits --json     # remaining and plan credits, billing period
 ```
 
-**Check availability:** Before using any Firecrawl tool, verify the MCP server
-is connected by checking if `firecrawl_scrape` or any Firecrawl tool
-is available. If tools are not available, inform the user the extension is not
-installed and provide install instructions.
+- `firecrawl` not found: `npm install -g firecrawl-cli`, then `firecrawl login`.
+- Not signed in: `firecrawl login` (the user runs it; never paste a key into chat).
+- Never store the API key in a config file or command line in this repo.
+- If Firecrawl MCP tools (`firecrawl_*`) are loaded instead, the same rules apply.
+
+Read `firecrawl credits --json` before and after any batch and report the spend.
+
+## Free path first
+
+| Need | Use | Cost |
+|------|-----|------|
+| One page, static HTML | WebFetch, or `"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run render_page.py <url> --mode never --json` | Free |
+| One page, JS-rendered | `"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run render_page.py <url> --mode always --json` | Free (local Playwright) |
+| Response headers, status | `"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run fetch_page.py <url>` | Free |
+| URL list from sitemaps | `"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run sitemap_discovery.py <url>` | Free |
+| Site URL discovery beyond the sitemap | `firecrawl map` | Paid |
+| Many pages with JS, anti-bot, clean markdown | `firecrawl crawl` / `firecrawl scrape` | Paid |
+| Web search results | `firecrawl search` | Paid |
+
+Use Firecrawl for one page only when the free path fails (blocked, empty SPA shell
+after render, PDF parsing).
+
+## Credit rules
+
+Measured with firecrawl-cli 1.26.3 on 2026-11-10 by reading `firecrawl credits --json`
+before and after each call:
+
+| Call | Measured cost |
+|------|---------------|
+| `firecrawl map <url> --limit 5 --json` | 1 credit per call |
+| `firecrawl scrape <url> --format markdown` | 1 credit per page |
+| `firecrawl search "<query>" --limit 2 --sources web` | 2 credits |
+
+From the CLI help text (not measured here):
+- PDFs cost 1 credit per parsed page; cap with `--max-pages`. Extra scrape options may cost more.
+- `crawl` scrapes every page it visits, so budget at least the scrape cost per page and always set `--limit`.
+- `search --scrape` also scrapes each result.
+- `firecrawl agent` spends variable credits; always pass `--max-credits`.
+
+Before any call over 10 credits, state the estimate (pages x cost) and the credits
+left, and get the user's go-ahead. Never run an uncapped crawl.
 
 ## Quick Reference
 
 | Command | Purpose |
 |---------|---------|
-| `/seo firecrawl crawl <url>` | Full-site crawl with content extraction |
-| `/seo firecrawl map <url>` | Discover site structure (URLs only, fast) |
-| `/seo firecrawl scrape <url>` | Single-page scrape with JS rendering |
-| `/seo firecrawl search <query> <url>` | Search within a crawled site |
+| `/seo firecrawl map <url>` | Discover site URLs (1 credit per call) |
+| `/seo firecrawl crawl <url>` | Crawl and extract pages (per page) |
+| `/seo firecrawl scrape <url>` | One page with JS rendering, when the free path failed |
+| `/seo firecrawl search <query> [site]` | Web search, optionally limited to one site with `site:` |
 
 ## Commands
 
-### crawl -- Full-Site Crawl
+### map: site structure discovery
 
-Crawl an entire website starting from the given URL. Returns page content,
-metadata, and links for all discovered pages.
-
-**MCP Tool:** `firecrawl_crawl`
-
-**Parameters:**
-- `url` (required): Starting URL to crawl
-- `limit`: Max pages to crawl (default: 100, max: 500)
-- `maxDepth`: Max link depth from start URL (default: 3)
-- `includePaths`: Array of glob patterns to include (e.g., `["/blog/*"]`)
-- `excludePaths`: Array of glob patterns to exclude (e.g., `["/admin/*", "/api/*"]`)
-- `scrapeOptions.formats`: Output formats -- `["markdown", "html", "links"]`
-
-**SEO Usage Patterns:**
-1. **Comprehensive audit crawl**: Crawl full site, extract all pages for subagent analysis
-2. **Section-focused crawl**: Use `includePaths` to audit only `/blog/*` or `/products/*`
-3. **Broken link detection**: Crawl with `["links"]` format, check all hrefs for 404s
-4. **Content inventory**: Extract all page titles, meta descriptions, H1s at scale
-5. **SPA/JS-rendered sites**: Firecrawl renders JavaScript, solving the Issue #11 problem
-
-**Example orchestration for `/seo audit`:**
-```
-1. firecrawl_map(url) -> get all URLs (fast, no content)
-2. Filter to top 50 most important pages (homepage, key sections)
-3. firecrawl_crawl(url, limit=50) -> get full content
-4. Feed content to seo-technical, seo-content, seo-schema agents
+```bash
+firecrawl map https://example.com --limit 5000 --json -o .firecrawl/map.json
+firecrawl map https://example.com --search blog --json      # filter URLs by a term
+firecrawl map https://example.com --sitemap skip --json      # links only, ignore sitemaps
 ```
 
-**Cost awareness:**
-- Free tier: 500 credits/month
-- 1 credit = 1 page crawled or scraped
-- Map operations are cheaper (0.5 credits per URL discovered)
-- Always inform user of estimated credit usage before large crawls
+Options: `--limit`, `--search`, `--sitemap only|include|skip`, `--include-subdomains`,
+`--ignore-query-parameters`, `--json`, `-o <file>`.
 
-### map -- Site Structure Discovery
+SEO uses: sitemap comparison (map with `--sitemap skip` vs XML sitemap), orphan and
+missing pages, URL pattern and parameter bloat analysis, pre-audit discovery.
 
-Discover all URLs on a website without fetching content. Fast and credit-efficient.
+Present as a pattern breakdown: total URLs, then counts and shares per top-level path.
 
-**MCP Tool:** `firecrawl_map`
+### crawl: multi-page extraction
 
-**Parameters:**
-- `url` (required): Website URL to map
-- `limit`: Max URLs to discover (default: 5000)
-- `search`: Optional search term to filter URLs
-
-**SEO Usage Patterns:**
-1. **Sitemap comparison**: Map site, compare discovered URLs vs XML sitemap
-2. **Orphan page detection**: URLs in sitemap but not linked from any page
-3. **Crawl budget analysis**: Total indexable pages vs pages linked from homepage
-4. **URL pattern analysis**: Identify URL structure patterns, duplicates, parameter bloat
-5. **Pre-audit discovery**: Run map first, then targeted crawl on key sections
-
-**Output:** Array of URLs. Present as:
-```
-Site: example.com
-Pages discovered: 342
-
-URL Pattern Breakdown:
-  /blog/*          - 128 pages (37%)
-  /products/*      - 89 pages (26%)
-  /category/*      - 45 pages (13%)
-  /pages/*         - 32 pages (9%)
-  / (root pages)   - 48 pages (14%)
+```bash
+firecrawl crawl https://example.com --limit 50 --max-depth 3 \
+  --include-paths "/blog/*" --exclude-paths "/admin/*,/api/*" \
+  --scrape-options '{"formats":["markdown","links"],"onlyMainContent":true}' \
+  --wait --progress -o .firecrawl/crawl.json
 ```
 
-### scrape -- Single-Page Deep Scrape
+Without `--wait` the command returns a job ID: check it with
+`firecrawl crawl <job-id> --status`, stop it with `firecrawl crawl <job-id> --cancel`.
+Other options: `--sitemap skip|include`, `--ignore-query-parameters`,
+`--allow-subdomains`, `--delay <ms>`, `--max-concurrency <n>`, `--timeout <s>`.
 
-Scrape a single page with full JavaScript rendering. More thorough than
-`fetch_page.py` because it executes JS and waits for dynamic content.
+Audit pattern: `map` first, pick the pages that matter (homepage, templates, top
+sections), then `crawl --limit` on those sections only, and feed the saved output to
+the technical, content and schema agents.
 
-**MCP Tool:** `firecrawl_scrape`
+### scrape: one page or a short list
 
-**Parameters:**
-- `url` (required): Page URL to scrape
-- `formats`: Output formats -- `["markdown", "html", "links", "screenshot"]`
-- `onlyMainContent`: Strip nav/footer/sidebar (default: true)
-- `waitFor`: CSS selector or milliseconds to wait for content
-- `timeout`: Request timeout in ms (default: 30000)
-- `actions`: Browser actions before scraping (click, scroll, wait)
+```bash
+firecrawl scrape https://example.com/page --format markdown --only-main-content
+firecrawl scrape https://example.com/page --format markdown,links,html --json -o .firecrawl/page.json
+firecrawl scrape https://example.com/page --wait-for 3000 --screenshot
+firecrawl scrape https://example.com/file.pdf --max-pages 5
+```
 
-**SEO Usage Patterns:**
-1. **SPA content extraction**: Scrape JS-rendered React/Vue/Angular pages
-2. **Dynamic content audit**: Pages with lazy-loaded content below the fold
-3. **Paywall/login detection**: Identify content behind authentication walls
-4. **Main content extraction**: Use `onlyMainContent` for clean E-E-A-T analysis
-5. **Screenshot capture**: Use `screenshot` format for visual analysis
+`--only-main-content` is off by default in the CLI; turn it on for E-E-A-T text.
+Multiple URLs in one call are saved under `.firecrawl/`.
 
-**When to use scrape vs fetch_page.py:**
-| Scenario | Use |
-|----------|-----|
-| Static HTML page | `fetch_page.py` (no API cost) |
-| JS-rendered SPA | `firecrawl_scrape` (renders JS) |
-| Need response headers | `fetch_page.py` (returns headers) |
-| Need clean markdown | `firecrawl_scrape` (better extraction) |
-| Rate-limited/blocked | `firecrawl_scrape` (handles anti-bot) |
+### search: web search
 
-### search -- Site-Scoped Search
+```bash
+firecrawl search "best running shoes site:example.com" --limit 10 --sources web --json
+firecrawl search "topic" --limit 5 --sources web --country AU --tbs qdr:m
+```
 
-Search within a website for specific content. Useful for finding pages
-related to a topic without crawling everything.
+There is no `url` parameter: to search within one site, put `site:example.com` in the
+query. Options: `--limit` (max 100), `--sources web,images,news`, `--country`,
+`--location`, `--tbs`, `--scrape` (adds scrape cost per result). Use `--sources web`
+to keep tool-discovery results out of SEO output.
 
-**MCP Tool:** `firecrawl_search`
-
-**Parameters:**
-- `query` (required): Search query
-- `url` (required): Website to search within
-- `limit`: Max results (default: 10)
-- `scrapeOptions.formats`: Output format for matched pages
-
-**SEO Usage Patterns:**
-1. **Content gap validation**: Search for a keyword on the site to check if content exists
-2. **Internal linking opportunities**: Find pages mentioning a topic that could link to each other
-3. **Duplicate content detection**: Search for key phrases to find near-duplicates
-4. **Competitor content research**: Search competitor site for specific topics
+SEO uses: check whether a site already covers a topic, find internal link candidates
+(`site:` + phrase), spot near-duplicate phrasing, sample competitor coverage.
 
 ## Cross-Skill Integration
 
-### With seo-audit (full audit)
-When Firecrawl is available during `/seo audit`:
-1. Use `firecrawl_map` to discover all site URLs
-2. Compare with XML sitemap (seo-sitemap) to find orphan/missing pages
-3. Select top pages for deep analysis
-4. Feed crawled content to all subagents (technical, content, schema, geo)
-5. Report total crawlable pages, URL patterns, and crawl depth
-
-### With seo-technical
-- Broken link detection: crawl all internal links, check for 404s
-- Redirect chain mapping: follow all redirects, flag chains > 2 hops
-- Mixed content detection: check HTTP resources on HTTPS pages
-- Canonical verification: compare canonical URLs with actual URLs
-
-### With seo-sitemap
-- Sitemap coverage: % of crawled pages present in sitemap
-- Orphan pages: pages found by crawl but missing from sitemap
-- Stale sitemap entries: URLs in sitemap that return 404/410
-
-### With seo-content
-- Content extraction: feed clean markdown to E-E-A-T analysis
-- Thin content detection: identify pages with < 300 words at scale
-- Duplicate content: compare content across pages for near-duplicates
-
-### With seo-schema
-- Schema extraction: pull JSON-LD from all crawled pages
-- Schema coverage: % of pages with structured data
-- Schema validation: batch-validate extracted schemas
+- **seo-audit**: the main session may run `firecrawl --status` and
+  `firecrawl map <url> --limit <n> --json`; otherwise sitemap discovery plus
+  `render_page.py`. Subagents receive saved files, not live Firecrawl access.
+- **seo-technical**: broken internal links and redirect chains from crawl `links`.
+- **seo-sitemap**: coverage (% of mapped URLs in the sitemap), orphans, stale entries.
+- **seo-content**: thin content (< 300 words) and near-duplicates from crawl markdown.
+- **seo-schema**: JSON-LD extracted from crawled HTML.
 
 ## Error Handling
 
 | Error | Cause | Resolution |
 |-------|-------|-----------|
-| `FIRECRAWL_API_KEY not set` | MCP not configured | Run `./extensions/firecrawl/install.sh` |
-| `402 Payment Required` | Credits exhausted | Check usage at firecrawl.dev/app, upgrade plan |
-| `429 Too Many Requests` | Rate limited | Wait 60s, reduce crawl concurrency |
-| `408 Timeout` | Page too slow to render | Increase `timeout`, try without JS rendering |
-| `403 Forbidden` | Site blocks crawling | Check robots.txt, may need to skip this site |
+| `command not found: firecrawl` | CLI not installed | `npm install -g firecrawl-cli`, then `firecrawl login` |
+| Not authenticated | No login on this machine | The user runs `firecrawl login` |
+| `402 Payment Required` | Credits exhausted | Report `firecrawl credits --json`; fall back to the free path |
+| `429 Too Many Requests` | Rate limited | Wait, lower `--max-concurrency`, retry |
+| Timeout | Slow page or large crawl | Raise `--timeout` or `--wait-for`, crawl a smaller section |
+| `403 Forbidden` | Site blocks crawling | Respect it; use `render_page.py` for single pages |
 
-**Graceful fallback:** If Firecrawl is unavailable, inform the user and suggest:
-1. Use `fetch_page.py` for single-page analysis (no API cost)
-2. Use `WebFetch` tool for basic HTML retrieval
-3. Install Firecrawl: `./extensions/firecrawl/install.sh`
+**Graceful fallback:** without Firecrawl, use WebFetch or `render_page.py` for pages
+and `sitemap_discovery.py` for URL lists, and say which pages were not covered.
 
 ## Security
 

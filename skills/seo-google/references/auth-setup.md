@@ -149,6 +149,6 @@ Instead of (or in addition to) the config file:
 | `403 Forbidden` on GSC | Service account email not added to GSC property, or wrong permission level |
 | `403 Forbidden` on GA4 | Service account email not added to GA4 property as Viewer |
 | `404 Not Found` on GSC | Wrong property URL format. Use `sc-domain:` or include trailing slash for URL-prefix |
-| `404 Not Found` on CrUX | Site has insufficient Chrome traffic. Not a credentials issue. |
+| `404 Not Found` on CrUX | No record for that exact key. Try the www/non-www variant and the origin (`pagespeed_check.py` does this); only if all 404 is it insufficient Chrome traffic. Not a credentials issue. |
 | `429 Rate Limit` | Wait and retry. See rate-limits-quotas.md for per-API limits |
 | `API not enabled` | Enable the specific API in GCP Console > APIs & Services > Library |

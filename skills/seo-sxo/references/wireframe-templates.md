@@ -33,6 +33,11 @@ Missing from SERP expectations:
 
 ## SOLL Templates by Page Type
 
+`faq` sections below are on-page questions answered in the body. Do not attach
+FAQPage or HowTo markup to them: neither produces a Google result feature any
+more (FAQ rich results stopped 7 May 2026; HowTo ended 2023). Each answered
+sub-question is a section of this page, never a separate page.
+
 ### 1. Landing Page
 
 ```
@@ -113,7 +118,7 @@ Missing from SERP expectations:
 <section class="cta"> Repeat CTA + contact form </section>
 ```
 
-### 6. Local Page
+### 6. Location Page
 
 ```
 <section class="hero">
@@ -153,6 +158,16 @@ Missing from SERP expectations:
 <section class="proof"> Case study or testimonial </section>
 <section class="cta"> Match journey stage from SERP analysis </section>
 <section class="faq"> Mix of educational + product PAA </section>
+```
+
+### 9. Category / Collection
+
+```
+<section class="category-head"> H1: [category name] | 1-2 line intro with the buying fact that matters </section>
+<section class="filters"> Filters matching the attributes searchers use (size, material, price) </section>
+<section class="grid"> Product cards: image, name, price, availability (crawlable links) </section>
+<section class="guidance"> Short buying guidance answering the result page's sub-questions </section>
+<section class="related"> Links to sibling and child categories </section>
 ```
 
 ## Placeholder Rules

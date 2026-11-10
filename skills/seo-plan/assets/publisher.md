@@ -139,9 +139,11 @@ Publishers face highest E-E-A-T scrutiny.
 - Monitor performance vs non-AMP
 
 ### Pagination
-- Proper pagination for multi-page articles
-- Or infinite scroll with proper indexing
-- Canonical to page 1 or full article
+- Archive and multi-page article pages each get their own URL and a
+  self-referencing canonical; do not canonicalise page 2+ to page 1
+- Infinite scroll needs a paginated URL behind it with crawlable `<a href>` links
+- Google no longer uses `rel="next"` / `rel="prev"`
+- Source: https://developers.google.com/search/docs/specialty/ecommerce/pagination-and-incremental-page-loading
 
 ## Key Metrics to Track
 

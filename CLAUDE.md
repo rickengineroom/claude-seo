@@ -225,8 +225,8 @@ claude-seo/
 - **All SEO reports must use `scripts/google_report.py`** as the canonical report generator
 - **Dependencies**: `matplotlib>=3.8.0` (charts) + `weasyprint>=70.0` (HTML-to-PDF), both in `requirements.txt`
 - **Format**: A4 PDF via WeasyPrint + matplotlib charts at 200 DPI
-- **Style**: Clean white title page with navy (#1e3a5f) accent, Times New Roman body font
-- **Color palette**: Navy #1e3a5f (headers), dark gold #b8860b (accents), forest green #2d6a4f (pass), warm amber #d4740e (warnings), deep red #c53030 (fail), warm cream #faf9f7 (backgrounds)
+- **Style (Rick's fork)**: Engine Room brand. Paper #F2F2F2, ink #0F0F0F, single accent #FF5722, white cards with hairline borders, sharp 2-4px corners. Inter Tight + IBM Plex Mono, embedded automatically when installed, sans fallback otherwise. No tool author stamp and no timelines in the report (see agency-skills house rules).
+- **Color palette**: defined once in `scripts/google_report.py` (`COLORS`); status colours for pass/warn/fail live there too
 - **Structure**: Title page → TOC with scores → Executive Summary → Data sections → Recommendations → Methodology
 - **Charts**: 85% width, max-height 120mm, figure captions on every chart, saved to `charts/` at 200 DPI
 - **No `page-break-inside: avoid`** on any element (causes white gaps in WeasyPrint)

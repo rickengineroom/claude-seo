@@ -103,7 +103,7 @@
 - Challenge/problem statement
 - Approach/methodology
 - Results with specific metrics
-- Timeline
+- Dates of the engagement and of the measured results
 - Testimonial quote
 
 ## Content Priorities

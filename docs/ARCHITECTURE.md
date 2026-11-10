@@ -339,7 +339,7 @@ extensions/
 | **SE Ranking** | SE Ranking API | AI Share-of-Voice across ChatGPT, Gemini, Perplexity, AI Overviews, and AI Mode |
 | **Profound** | Profound API | LLM citation tracking with time-series data |
 | **Bing Webmaster** | Bing Webmaster Tools API | Bing Webmaster Tools + IndexNow URL submission |
-| **Unlighthouse** | `unlighthouse@0.13.5` | Multi-page Lighthouse runner, runs locally |
+| **Unlighthouse** | `unlighthouse@0.19.1` | Multi-page Lighthouse runner, runs locally |
 
 ### Extension Convention
 

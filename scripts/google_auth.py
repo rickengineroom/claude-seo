@@ -100,6 +100,154 @@ def redact_google_api_key(value: object) -> str:
     return _GOOGLE_API_KEY_RE.sub("GOOGLE_API_KEY_REDACTED", text)
 
 
+# A 403 from a Google API has several unrelated causes. The ErrorInfo
+# ``reason`` and the ``consumer`` project tell them apart; the status code
+# alone does not, so "add the account to the property" is often wrong advice.
+_GOOGLE_ERROR_DIAGNOSES = {
+    "SERVICE_DISABLED": (
+        "The API is not enabled in the Google Cloud project billed for this call "
+        "({consumer}). Enable it in that project, or set the quota project to the "
+        "project where it is enabled (gcloud auth application-default "
+        "set-quota-project <project-id>). This is not a property-access problem."
+    ),
+    "ACCESSNOTCONFIGURED": "SERVICE_DISABLED",
+    "USER_PROJECT_DENIED": (
+        "The signed-in account may not use the quota project {consumer}. Set a "
+        "quota project the account can use (gcloud auth application-default "
+        "set-quota-project <project-id>) or grant it Service Usage Consumer there."
+    ),
+    "ACCESS_TOKEN_SCOPE_INSUFFICIENT": (
+        "The token is missing the OAuth scope for this API. Sign in again with "
+        "the scope included; property access is not the cause."
+    ),
+    "INSUFFICIENTPERMISSIONS": "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
+    "API_KEY_SERVICE_BLOCKED": (
+        "The API key is restricted and does not allow this API. Add the API to "
+        "the key's API restrictions or use another key."
+    ),
+    "API_KEY_HTTP_REFERRER_BLOCKED": "API_KEY_SERVICE_BLOCKED",
+    "API_KEY_IP_ADDRESS_BLOCKED": "API_KEY_SERVICE_BLOCKED",
+    "API_KEY_INVALID": "The API key is invalid or deleted. Replace it in the config.",
+    "KEYINVALID": "API_KEY_INVALID",
+    "RATE_LIMIT_EXCEEDED": (
+        "A rate limit or quota was hit. Wait and retry with backoff; GA4 tokens "
+        "are counted per property per day and per hour."
+    ),
+    "RATELIMITEXCEEDED": "RATE_LIMIT_EXCEEDED",
+    "QUOTAEXCEEDED": "RATE_LIMIT_EXCEEDED",
+    "RESOURCE_EXHAUSTED": "RATE_LIMIT_EXCEEDED",
+    "SITEUNVERIFIEDUSER": (
+        "The account is listed on this Search Console property but is not a "
+        "verified user: access was lost (owner removed it or verification "
+        "lapsed). Re-grant access before reading any data."
+    ),
+}
+_GOOGLE_ACCESS_DIAGNOSIS = (
+    "The signed-in account has no access to {resource}. Confirm which account "
+    "the credentials belong to, then add it to the property (Search Console > "
+    "Settings > Users and permissions, or GA4 Admin > Property Access "
+    "Management). If `gsc_query.py sites` lists the property as "
+    "siteUnverifiedUser, access was lost."
+)
+_GOOGLE_REASON_RE = re.compile(r"reason[\"']?\s*[:=]\s*[\"']?([A-Za-z_]+)")
+_GOOGLE_CONSUMER_RE = re.compile(r"consumer.{0,40}?(projects/[\w-]+)", re.DOTALL)
+
+
+def _google_error_payload(exc: object) -> Optional[dict]:
+    """Return the JSON ``error`` object of a googleapiclient HttpError, if any."""
+    content = getattr(exc, "content", None)
+    if isinstance(content, bytes):
+        content = content.decode("utf-8", "replace")
+    if not isinstance(content, str):
+        return None
+    try:
+        data = json.loads(content)
+    except ValueError:
+        return None
+    if isinstance(data, dict) and isinstance(data.get("error"), dict):
+        return data["error"]
+    return None
+
+
+def describe_google_error(exc: object, resource: str = "this resource") -> dict:
+    """Classify a Google API error by ErrorInfo reason and consumer project.
+
+    Works for googleapiclient ``HttpError`` (Search Console, Indexing),
+    google-api-core exceptions (GA4 Data API) and plain strings. Returns
+    ``status``, ``reason``, ``consumer``, ``message`` and ``diagnosis``.
+    """
+    text = redact_google_api_key(exc)
+    status = None
+    reasons: list[str] = []
+    consumer = None
+
+    payload = _google_error_payload(exc)
+    if payload:
+        status = payload.get("code")
+        for item in payload.get("details", []) or []:
+            if isinstance(item, dict) and item.get("reason"):
+                reasons.append(str(item["reason"]))
+                meta = item.get("metadata") or {}
+                consumer = consumer or meta.get("consumer")
+        for item in payload.get("errors", []) or []:
+            if isinstance(item, dict) and item.get("reason"):
+                reasons.append(str(item["reason"]))
+        if payload.get("status"):
+            reasons.append(str(payload["status"]))
+    else:
+        code = getattr(exc, "code", None)
+        if isinstance(code, int):
+            status = code
+        api_core_reason = getattr(exc, "reason", None)
+        if isinstance(api_core_reason, str) and re.fullmatch(r"[A-Z_]+", api_core_reason):
+            reasons.append(api_core_reason)
+        meta = getattr(exc, "metadata", None)
+        if isinstance(meta, dict):
+            consumer = meta.get("consumer")
+
+    if status is None:
+        resp = getattr(exc, "resp", None)
+        status = getattr(resp, "status", None) or getattr(exc, "status_code", None)
+    if status is None:
+        match = re.search(r"\b(4\d\d|5\d\d)\b", text)
+        status = int(match.group(1)) if match else None
+    reasons.extend(m.group(1) for m in _GOOGLE_REASON_RE.finditer(text))
+    if consumer is None:
+        match = _GOOGLE_CONSUMER_RE.search(text)
+        consumer = match.group(1) if match else None
+    if "serviceusage.services.use" in text:
+        reasons.insert(0, "USER_PROJECT_DENIED")
+
+    reason = None
+    diagnosis = None
+    for candidate in reasons:
+        key = candidate.upper()
+        entry = _GOOGLE_ERROR_DIAGNOSES.get(key)
+        if isinstance(entry, str) and entry in _GOOGLE_ERROR_DIAGNOSES:
+            entry = _GOOGLE_ERROR_DIAGNOSES[entry]
+        if entry:
+            reason, diagnosis = candidate, entry
+            break
+    if reason is None and reasons:
+        reason = reasons[0]
+    if diagnosis is None:
+        if status == 403 or "PERMISSION_DENIED" in text:
+            diagnosis = _GOOGLE_ACCESS_DIAGNOSIS
+        elif status == 404 or "NOT_FOUND" in text:
+            diagnosis = "Not found: check the property string or ID for {resource}."
+        else:
+            diagnosis = "Unclassified Google API error; see message."
+    return {
+        "status": status,
+        "reason": reason,
+        "consumer": consumer,
+        "message": text[:500],
+        "diagnosis": diagnosis.format(
+            consumer=consumer or "the credentials' quota project", resource=resource
+        ),
+    }
+
+
 def load_config() -> dict:
     """
     Load configuration from config file with environment variable fallbacks.

@@ -3,10 +3,12 @@ name: seo-google
 description: >
   Google SEO APIs: Search Console (Search Analytics, URL Inspection, Sitemaps),
   PageSpeed Insights v5, CrUX field data with 25-week history, Indexing API v3,
-  and GA4 organic traffic. Provides real Google field data for Core Web Vitals,
-  indexation status, search performance, and organic traffic trends. Use when
+  and GA4 (organic or any channel, AI Assistant channel, key events, site
+  search terms). Provides real Google field data for Core Web Vitals,
+  indexation status, search performance, and traffic trends. Use when
   user says "search console", "GSC", "PageSpeed", "CrUX", "field data",
-  "indexing API", "GA4 organic", "URL inspection", or "real CWV data".
+  "indexing API", "GA4 organic", "key events", "AI assistant traffic",
+  "brand vs non-brand", "URL inspection", or "real CWV data".
 user-invocable: true
 argument-hint: "[command] [url|property]"
 license: MIT
@@ -49,8 +51,8 @@ If missing, read `references/auth-setup.md` and walk the user through setup.
 | Tier | Detection | Available Commands |
 |------|-----------|-------------------|
 | **0** (API Key) | `api_key` present | `pagespeed`, `crux`, `crux-history`, `youtube`, `nlp` |
-| **1** (OAuth/SA) | + OAuth token or service account | Tier 0 + `gsc`, `inspect`, `sitemaps`, `index` |
-| **2** (Full) | + `ga4_property_id` configured | Tier 1 + `ga4`, `ga4-pages` |
+| **1** (OAuth/SA) | + OAuth token or service account | Tier 0 + `gsc`, `gsc-buckets`, `inspect`, `sitemaps`, `index` |
+| **2** (Full) | + GA4 property access | Tier 1 + `ga4`, `ga4-pages`, `ga4-ai`, `ga4-key-events`, `ga4-search-terms` |
 | **3** (Ads) | + `ads_developer_token` + `ads_customer_id` | Tier 2 + `keywords`, `volume` |
 
 Always communicate the detected tier before running commands.
@@ -64,6 +66,7 @@ Always communicate the detected tier before running commands.
 | `/seo google crux <url>` | CrUX field data only (p75 metrics) | 0 |
 | `/seo google crux-history <url>` | 25-week CWV trend analysis | 0 |
 | `/seo google gsc <property>` | Search Console: clicks, impressions, CTR, position | 1 |
+| `/seo google gsc-buckets <property>` | Brand / question / query-length split by regex | 1 |
 | `/seo google inspect <url>` | URL Inspection: index status, canonical, crawl info | 1 |
 | `/seo google inspect-batch <file>` | Batch URL Inspection from file | 1 |
 | `/seo google sitemaps <property>` | GSC sitemap status | 1 |
@@ -71,6 +74,9 @@ Always communicate the detected tier before running commands.
 | `/seo google index-batch <file>` | Batch submit up to 200 URLs | 1 |
 | `/seo google ga4 [property-id]` | GA4 organic traffic report | 2 |
 | `/seo google ga4-pages [property-id]` | Top organic landing pages | 2 |
+| `/seo google ga4-ai [property-id]` | AI Assistant channel by landing page and source | 2 |
+| `/seo google ga4-key-events [property-id]` | Key events by landing page and channel | 2 |
+| `/seo google ga4-search-terms [property-id]` | Site search terms (`searchTerm`) | 2 |
 | `/seo google youtube <query>` | YouTube video search (views, likes, duration) | 0 |
 | `/seo google youtube-video <id>` | YouTube video details + top comments | 0 |
 | `/seo google nlp <url-or-text>` | NLP entity extraction + sentiment + classification | 0 |
@@ -131,7 +137,24 @@ Includes quick-win detection: queries at position 4-10 with high impressions.
 The `totals` block comes from a separate dimensionless aggregate query because
 query-level rows can omit anonymized low-volume traffic. Treat totals as
 site-wide only when `totals_complete` is true. `--limit` caps total returned
-dimension rows, not the size of every pagination request.
+dimension rows, not the size of every pagination request. When the output says
+`"truncated": true`, a page or query missing from the rows is not a zero: raise
+`--limit` (up to 100,000, paged by `startRow`) or filter to it.
+
+Regex filters: `--filter "query:includingRegex:(?i)^how "` or
+`--filter "page:excludingRegex:/blog/"` (repeatable; RE2, case-sensitive unless
+the pattern starts with `(?i)`).
+
+### `/seo google gsc-buckets <property>`
+
+Clicks and impressions split into brand / non-brand, question, and query length
+(1, 2-3, 4-6, 7+ words), each with its share of the site total and sample queries.
+
+**Script:** `"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run gsc_query.py buckets --property <property> --brand-regex "(?i)brand|brnad|product" --json`
+
+Build the brand regex from the brand name, common misspellings and product names,
+and show it in the report. Anonymized queries match no filter, so buckets do not sum
+to the site total; the remainder is reported as `anonymized_or_unmatched`.
 
 > **AI surfaces in GSC (2026):**
 > - **Generative AI performance report** (launched 2026-06-03), a dedicated view of **AI Overviews + AI Mode** visibility. **Impressions only** (no clicks/CTR/position/query); dimensions Pages/Countries/Devices/Dates (Pacific Time); 1,000-row limit; newest data preliminary; a separate Discover gen-AI report also exists. Available to all websites worldwide since 2026-08-31 (launched to a subset 2026-06-03); dates support hourly, daily, weekly and monthly granularity.
@@ -200,15 +223,43 @@ Organic traffic report: daily sessions, users, pageviews, bounce rate, engagemen
 
 **Script:** `"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run ga4_report.py --property <id> --json`
 **Reference:** `references/ga4-data-api.md`
-**Default:** 28 days, filtered to Organic Search channel group.
+**Default:** 28 days, filtered to Organic Search channel group. `--channel "<group>"`
+switches channel for `organic`, `top-pages`, `device` and `country`; `--channel all`
+removes the filter.
 
-> **GA4 "AI Assistants" channel (live ~2026-05-13):** GA4 added a native *AI Assistants* Default Channel Group. Sessions referred by a recognized AI assistant get `medium=ai-assistant`. Google's recognized sources are **ChatGPT, Gemini, Claude, Deepseek, Copilot, Grok** and the channel **excludes** Google AI Overviews / AI Mode. **Verify Perplexity separately if needed**; unsupported sources may stay in Referral, and most AI sessions arrive referrer-less and fall into **Direct**, so this channel undercounts AI traffic. Forward-only, no backfill.
+> **GA4 "AI Assistant" channel (live ~2026-05-13):** GA4 added a native *AI Assistant* Default Channel Group. Sessions referred by a recognized AI assistant get `medium=ai-assistant`. Google's recognized sources are **ChatGPT, Gemini, Claude, Deepseek, Copilot, Grok** and the channel **excludes** Google AI Overviews / AI Mode. **Verify Perplexity separately if needed**; unsupported sources may stay in Referral, and most AI sessions arrive referrer-less and fall into **Direct**, so this channel undercounts AI traffic. Forward-only, no backfill.
 
 ### `/seo google ga4-pages [property-id]`
 
-Top organic landing pages ranked by sessions.
+Top organic landing pages ranked by sessions, with key events per page.
 
 **Script:** `"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run ga4_report.py --property <id> --report top-pages --json`
+
+### `/seo google ga4-ai [property-id]`
+
+AI Assistant channel sessions, engaged sessions and key events by landing page and source.
+
+**Script:** `"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run ga4_report.py --property <id> --report ai-assistant --json`
+
+Report the output's `caveats` with the numbers: it is a floor, not total AI traffic.
+
+### `/seo google ga4-key-events [property-id]`
+
+Key events by landing page and session default channel group, with session key event rate.
+
+**Script:** `"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run ga4_report.py --property <id> --report key-events [--key-event purchase] [--channel "Organic Search"] --json`
+
+Zero key events across every row usually means nothing is marked as a key event in
+GA4 Admin; say that rather than "no conversions".
+
+### `/seo google ga4-search-terms [property-id]`
+
+On-site search terms from the `searchTerm` dimension (view_search_results events).
+
+**Script:** `"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run ga4_report.py --property <id> --report search-terms --json`
+
+Empty output usually means Enhanced measurement > Site search is off or the site's
+search parameter is not one GA4 watches. Use the terms as demand evidence for content gaps.
 
 ---
 
@@ -329,7 +380,28 @@ Generate a professional PDF report with charts and analytics.
 | GSC Search Analytics | 1,200 QPM/site | 30M QPD | Service Account |
 | GSC URL Inspection | 600 QPM | 2,000 QPD/site | Service Account |
 | Indexing API | 380 RPM | 200 publish/day | Service Account |
-| GA4 Data API | 10 concurrent | ~25K tokens/day | Service Account |
+| GA4 Data API | 10 concurrent (50 on 360) | 200,000 tokens/property/day; 40,000/hour (360: 2M / 400K) | Service Account |
+
+## Data Traps (check before reporting)
+
+1. **Name the property on every run.** Pass `--property` to `gsc_query.py` and to
+   `ga4_report.py` every time. A config default is flagged in the output
+   (`property_source: config_default`); never let it pick the client.
+2. **CrUX 404 is per exact key.** www and non-www (and http/https) are separate
+   origins. `pagespeed_check.py` tries the host variant and the origin and lists
+   `attempts`; say "insufficient Chrome traffic" only when every key returns 404.
+3. **A 403 has several causes.** Read `error_detail.reason` and `consumer`:
+   SERVICE_DISABLED (API off in the consumer project), USER_PROJECT_DENIED (quota
+   project), ACCESS_TOKEN_SCOPE_INSUFFICIENT (scope). Only a plain PERMISSION_DENIED
+   or forbidden means the account lacks property access.
+4. **siteUnverifiedUser = access lost.** `gsc_query.py sites` flags it with
+   `has_data_access: false`. Report lost access, never a property with no traffic.
+5. **GSC row cap fakes zeros.** The default is 1,000 rows. Check `truncated` before
+   saying a page or query has no impressions; page by `startRow` with a higher
+   `--limit` or filter to it.
+6. **GA4 landingPage does not join GSC page as-is.** GA4 gives a path without host
+   or query string, splits `/x` and `/x/`, and puts page-view-less sessions in
+   `(not set)`. Join on `page_key` and report `landing_page_notes`.
 
 ## Cross-Skill Integration
 
@@ -352,7 +424,7 @@ Generate a professional PDF report with charts and analytics.
 
 - INP replaced FID on March 12, 2024. Never reference FID.
 - CLS values from CrUX are string-encoded (e.g., "0.05"). Scripts handle parsing.
-- CrUX 404 = insufficient traffic, not an auth error.
+- CrUX 404 = no record for that exact key, not an auth error. Try the www/non-www variant and the origin before reporting insufficient traffic.
 - Search Analytics data has 2-3 day lag.
 - `round_trip_time` replaced `effectiveConnectionType` in CrUX (Feb 2025).
 - Custom Search JSON API is closed to new customers (2025).
@@ -363,7 +435,9 @@ Generate a professional PDF report with charts and analytics.
 |----------|--------|
 | No credentials configured | Run `/seo google setup`. List Tier 0 commands that work with just an API key. |
 | Service account lacks GSC access | Report error. Instruct: add `client_email` to GSC > Settings > Users > Add. |
-| CrUX data unavailable (404) | Report insufficient Chrome traffic. Suggest PSI lab data as fallback. |
+| 403 with a reason other than PERMISSION_DENIED / forbidden | Report the `reason` and `consumer` project and the matching fix (enable the API, set the quota project, add the scope). Do not tell the user to re-add the account. |
+| Property listed as `siteUnverifiedUser` | Access lost. Report it, ask for access to be re-granted, and do not present any figure for that property. |
+| CrUX data unavailable (404) | Check `attempts`: if the www/non-www variant and origin were tried and all 404, report insufficient Chrome traffic and use PSI lab data as fallback. |
 | GA4 property not found | Report error. Show how to find property ID in GA4 Admin > Property Details. |
 | Indexing API quota exceeded | Report 200/day limit. Suggest prioritizing most important URLs. |
 | Rate limit (429) | Wait and retry with exponential backoff. Report which API hit the limit. |

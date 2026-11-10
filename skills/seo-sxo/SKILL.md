@@ -5,7 +5,7 @@ description: >
   stories, and persona scoring. Use when ranking problems appear intent- or
   layout-driven.
 user-invocable: true
-argument-hint: "<url> [keyword]"
+argument-hint: "<url> [target-query] [--market <semrush-database>]"
 license: MIT
 metadata:
   author: AgriciDaniel
@@ -31,45 +31,112 @@ well-optimized it is.
 
 | Command | Purpose |
 |---------|---------|
-| `/seo sxo <url>` | Full SXO analysis (auto-detect keyword from page) |
-| `/seo sxo <url> <keyword>` | Full SXO analysis for a specific keyword |
+| `/seo sxo <url> --market <db>` | Full SXO analysis on the queries the page earns impressions for |
+| `/seo sxo <url> <target-query> --market <db>` | Full SXO analysis for a declared query plus the earned queries |
 | `/seo sxo wireframe <url>` | Generate IST/SOLL wireframe with concrete placeholders |
-| `/seo sxo personas <url>` | Persona-only scoring (skip SERP analysis) |
+| `/seo sxo personas <url>` | Persona-only scoring (skip SERP analysis; label it as not result-page tested) |
+
+## Shared Method
+
+This skill follows the seo-agency intent protocol (`intent-protocol.md` in the
+seo-agency skill's references folder). In short:
+
+- **Market first.** `--market` is a Semrush regional database code (`us`, `uk`,
+  `au`, `sg`, `id`, `mobile-au`, ...). If it is not given, infer it from the ccTLD,
+  hreflang or the Search Console country split, and print the inferred market in
+  the output. Never default to `us` silently.
+- **Intent is stored twice, each dated:** the tool label (tool named, for example
+  "Semrush: Commercial, au, 2026-11-10") and the label judged from the result page.
+- **Base vocabulary** is the Google Search Quality Rater Guidelines intents: Know,
+  Know Simple, Do, Website, Visit-in-Person (a query can carry more than one).
+  Crosswalk to tool labels: Informational -> Know / Know Simple; Navigational ->
+  Website; Transactional -> Do; Commercial -> Know or Do, decided by what ranks;
+  local pack or map results -> Visit-in-Person.
+- **AI Overview presence is an attribute** recorded per query (yes / no / unknown,
+  source, date). It never removes a query from the set.
+- **Fan-out sub-questions are sections inside a page**, never separate pages.
+  Google's AI optimization guide says separate content for every fan-out variation,
+  made primarily to manipulate rankings, violates its scaled content abuse policy
+  (https://developers.google.com/search/docs/fundamentals/ai-optimization-guide).
+- **Cannibalisation** needs the same intent plus split Search Console signals
+  (one query alternating between URLs, clicks split). Similar wording is not enough.
+- **Stop rule:** when result-page evidence cannot be obtained, stop and say so.
 
 ## Execution Pipeline
 
 ### Step 1: Target Acquisition
 
-1. Fetch the target URL via `"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run render_page.py <URL> --mode auto` (SPA-aware and SSRF-safe)
-2. Parse with `"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run parse_html.py <URL>` to extract: title, H1, meta description,
-   headings hierarchy, word count, schema markup, CTAs, media elements
-3. If no keyword provided, extract primary keyword from title tag + H1 overlap
-4. Validate keyword is non-empty before proceeding
+1. Render the target URL to a file:
+   `"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run render_page.py <URL> --mode auto --json --output page.html`
+   (SPA-aware and SSRF-safe)
+2. Parse the saved file: `"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run parse_html.py page.html --url <URL> --json`
+   to extract title, H1, meta description, headings hierarchy, word count, schema
+   markup, CTAs and media elements. `parse_html.py` takes a file path, not a URL.
+3. Classify the target page type with `references/page-type-taxonomy.md` (types 1-8)
+   and `references/page-type-taxonomy-extended.md` (category / collection, product
+   listing, homepage, case study, location page, plus result-only types).
+
+### Step 1b: Query Set (what the page actually earns)
+
+Test the queries the page gets impressions for, not only the keyword it declares.
+
+1. **Search Console** (when the property is configured, via `seo-google`):
+   `"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run gsc_query.py query --dimensions query --filter page:equals:<URL> --country <ISO alpha-3> --json`.
+   Take the top queries by impressions.
+2. **Semrush** `resource_organic` (target = the page URL, `database` = market,
+   `export_columns` including `keyword`, `position`, `url`, `volume`, `intent`,
+   `triggered_serp_features`) for the queries Semrush sees the URL ranking for.
+3. Query set = the declared target query (if given) plus up to five earned queries
+   by impressions. If the declared query is absent from the earned set, or the
+   earned queries carry a different intent, report that as a finding.
+4. If neither source is available and no target query was given, ask for one.
+   Title + H1 overlap is a last resort and must be labelled as a guess.
 
 ### Step 2: SERP Backwards Analysis
 
 Read `references/page-type-taxonomy.md` for classification rules.
 
-1. Search Google for the target keyword (WebSearch)
+**Evidence sources** (WebSearch is not one: it returns titles and URLs only, for
+US results, with no People Also Ask, ads, AI Overview or ranked positions):
+
+| Need | Source | Call |
+|------|--------|------|
+| Ranked top 10 URLs + SERP features per market | Semrush phrase-level organic results | `keyword_research` -> `get_report_schema("phrase_organic")` -> `execute_report` with `phrase`, `database`, `display_limit: 10`, `export_columns: [position, url, domain, triggered_serp_features]`; `positions_type: all` adds SERP features as positions |
+| Volume, tool intent label, difficulty | Semrush `phrase_this` / `phrase_these` (up to 100 queries) | `export_columns: [keyword, volume, intent, keyword_difficulty]` |
+| Queries a URL ranks for | Semrush `resource_organic` | as Step 1b |
+| Clicks, impressions, CTR, position per query and page | Search Console | as Step 1b |
+| Live check of a single result page | DataForSEO `serp_organic_live_advanced` (when configured, cost check first) or a logged-out capture the user supplies with location set | record location, device, date |
+
+Record the Semrush data date (`display_date` or the pull date) with every row.
+
+1. For each query in the set, pull the ranked top 10 for the market database.
 2. For each of the top 10 organic results, record:
-   - URL and domain authority tier (brand / niche authority / unknown)
-   - Page type (classify using taxonomy)
+   - URL, position and domain
+   - Page type (classify using taxonomy; fetch the page with `render_page.py` when
+     the URL alone does not settle it)
    - Content format (long-form, listicle, how-to, comparison, tool, video)
-   - Word count estimate (from snippet length and page structure)
-   - Schema types present (from currently supported SERP features; exclude FAQ/HowTo)
+   - Word count from the fetched page (never estimated from snippet length)
    - Media signals (video carousel, image pack, thumbnail presence)
-3. Record SERP features present:
-   - Featured snippet (paragraph / list / table / video)
-   - People Also Ask (extract all visible questions)
-   - Ads (top and bottom -- count and analyze ad copy themes)
-   - Related searches (extract all)
-   - Knowledge panel / local pack / shopping results
-   - AI Overview presence and source types
-4. Calculate SERP consensus:
+3. Record SERP features from `triggered_serp_features` or the live check:
+   - Featured snippet, People Also Ask (questions, when the source exposes them)
+   - Ads (count; copy themes only when the source returns ad text, for example
+     Semrush `phrase_adwords`)
+   - Knowledge panel, local pack, shopping results, video, image pack
+   - AI Overview: present / absent / unknown, as an attribute with source and date
+   - FAQ and HowTo are **not** live result features: FAQ rich results stopped on
+     7 May 2026 and HowTo rich results ended in 2023. Do not record them, and do
+     not list FAQPage or HowTo markup as a SERP expectation.
+4. Calculate SERP consensus per query:
    - Dominant page type (>60% = strong consensus, 40-60% = mixed, <40% = fragmented)
-   - Content depth expectations (average word count tier)
-   - Schema expectation (most common structured data types)
+   - Result-page intent label (rater-guideline vocabulary) next to the Semrush label
+   - Content depth expectations (word count range of fetched pages)
+   - Schema expectation (structured data types that still produce result features)
    - Media expectations (video required? images critical?)
+5. **Stop rule.** If no source returns a ranked top 10 for a query in the target
+   market, stop for that query and write: "Result-page evidence for <query> in
+   <market> could not be obtained; no page-type verdict given." Do not substitute
+   WebSearch, another market's database or memory. If no query in the set has
+   evidence, deliver Step 1 findings only and say why the rest is missing.
 
 ### Step 3: Page-Type Mismatch Detection
 
@@ -83,6 +150,9 @@ This is the core SXO insight. Compare target page type against SERP consensus.
 | Blog Post | Comparison | HIGH | Restructure as comparison with matrix |
 | Product | Informational | HIGH | Add educational content layer |
 | Landing Page | Tool/Calculator | HIGH | Build interactive tool component |
+| Blog Post / Product | Category / Product Listing | CRITICAL | Target the query with the category or collection page |
+| Blog Post / Service | Location Pages | HIGH | Use (or build) the location page for that place |
+| Inner page | Homepages (brand query) | HIGH | Navigational query: the homepage should own it |
 | Service Page | Local Results | MEDIUM | Add location signals + local schema |
 | Any type match | - | ALIGNED | Focus on content depth and UX |
 
@@ -102,7 +172,13 @@ From SERP signals, derive user stories:
 2. **Ad copy themes** reveal commercial triggers and value propositions
 3. **Related searches** reveal the search journey (what comes before/after)
 4. **Featured snippet format** reveals the expected answer structure
-5. **AI Overview** reveals what Google considers the definitive answer
+5. **AI Overview** content, when the evidence source shows it, reveals the answer
+   Google summarises (present / absent is recorded either way)
+6. **Search Console queries** for the page reveal the wording real visitors use
+
+Use only signals the evidence source actually returned. If PAA or ad text is not
+in the data, say so; do not invent questions or ad themes. Sub-questions found here
+become sections of the page, not new pages.
 
 For each signal cluster, generate a user story:
 ```
@@ -123,7 +199,7 @@ Compare the target page against SERP expectations across 7 dimensions:
 | Page Type | Target type vs SERP dominant type | 0-15 |
 | Content Depth | Word count, heading depth, topic coverage | 0-15 |
 | UX Signals | CTA clarity, above-fold content, mobile layout | 0-15 |
-| Schema Markup | Present vs expected structured data types | 0-15 |
+| Schema Markup | Present vs expected structured data types (exclude FAQPage and HowTo) | 0-15 |
 | Media Richness | Images, video, interactive elements vs SERP norm | 0-15 |
 | Authority Signals | E-E-A-T markers, social proof, credentials | 0-15 |
 | Freshness | Last updated, date signals, content recency | 0-10 |
@@ -162,14 +238,16 @@ Read `references/wireframe-templates.md` for templates.
    - YES: "Add pricing CTA with annual savings badge below hero, linking to /pricing#enterprise"
 4. Output as semantic HTML section outline with annotations
 
-## DataForSEO Integration
+## DataForSEO Integration (Optional)
 
-If DataForSEO MCP tools are available:
+If DataForSEO MCP tools are configured (they are not by default):
 
 1. **Before any API call**, run cost estimate and confirm with user
-2. Use `serp_organic_live_advanced` for precise SERP data (positions, features, snippets)
-3. Use `kw_data_google_ads_search_volume` for search volume and competition metrics
-4. Fall back to WebSearch if DataForSEO unavailable -- note reduced precision in output
+2. Use `serp_organic_live_advanced` with the market's `location_code` and
+   `language_code` for a live result page (positions, features, snippets)
+3. Use `kw_data_google_ads_search_volume` for search volume in that location
+4. If DataForSEO is unavailable, use Semrush; if neither returns a ranked top 10,
+   apply the stop rule. Never fall back to WebSearch for result-page evidence.
 
 ## SXO Score vs SEO Health Score
 
@@ -197,13 +275,18 @@ The SXO score is **separate** from the main SEO Health Score.
 
 ```
 ## SXO Analysis: [URL]
-### Target Keyword: [keyword]
+### Market: [Semrush database] (given | inferred from [signal])
+### Query set: [declared query] + [earned queries with impressions]
+
+### 0. Intent Record (one row per query)
+| Query | Impr. (GSC) | Volume (Semrush, db) | Tool intent (tool, date) | Result-page intent (source, date) | AI Overview (source, date) |
 
 ### 1. SERP Landscape
-- Dominant page type: [type] ([confidence]% consensus)
-- SERP features: [list]
-- Content depth norm: [word count range]
-- Schema expectation: [types]
+- Dominant page type: [type] ([confidence]% consensus) per query
+- SERP features: [list, from triggered_serp_features or live check]
+- Content depth norm: [word count range of fetched pages]
+- Schema expectation: [types that still produce result features]
+- Evidence: [source, database, data date]; queries stopped for missing evidence: [list]
 
 ### 2. Page-Type Alignment
 - Your page type: [type]
@@ -232,18 +315,25 @@ The SXO score is **separate** from the main SEO Health Score.
 | Error | Action |
 |-------|--------|
 | URL fetch fails | Report error, suggest checking URL accessibility |
-| No keyword provided or detected | Ask user to provide target keyword |
-| WebSearch returns <5 results | Proceed with available data, note limited sample |
+| No target query and no Search Console or Semrush rows | Ask user to provide the target query |
+| No market given and none can be inferred | Ask for the market; do not default to `us` |
+| No ranked top 10 for a query in the market | Stop rule: report the gap, no verdict for that query |
+| Fewer than 5 ranked results returned | Report the sample size next to every consensus figure |
 | SERP has no organic results (all ads) | Note highly commercial SERP, analyze ad copy only |
 | Target page is JavaScript-rendered | Note limitation, use available HTML content |
-| DataForSEO cost exceeds threshold | Fall back to WebSearch, notify user |
+| DataForSEO cost exceeds threshold | Use Semrush; if that fails too, apply the stop rule |
 
 ## Quality Checklist
 
 Before delivering results, verify:
 - [ ] Target URL was fetched via `"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run render_page.py <URL> --mode auto` (not raw curl/fetch)
 - [ ] Page type classification uses taxonomy from references
-- [ ] At least 5 SERP results were analyzed
+- [ ] Market is stated (given or inferred, with the signal)
+- [ ] Earned Search Console / Semrush queries were tested, not only the declared one
+- [ ] Each query has a dated tool intent label and a dated result-page label
+- [ ] Result-page evidence came from Semrush, DataForSEO or a supplied capture, never WebSearch
+- [ ] At least 5 ranked results were analyzed, or the stop rule was applied and reported
+- [ ] No FAQ or HowTo result features or schema expectations were recorded
 - [ ] User stories cite specific SERP signals as evidence
 - [ ] Persona scores include concrete improvement suggestions
 - [ ] SXO score is clearly labeled as separate from SEO Health Score

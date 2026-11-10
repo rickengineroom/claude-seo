@@ -69,6 +69,15 @@
 - Pagination: increment `startRow` by `rowLimit` until fewer rows returned.
 - `rowLimit` is per API request. The claude-seo `--limit` option is a total
   result cap and requests are paged internally at up to 25,000 rows.
+- **Fake zero footprint:** the CLI default is 1,000 rows. A page or query missing
+  from a capped result (`"truncated": true`) is not evidence of zero impressions.
+  Raise `--limit` (up to 100,000, paged by `startRow`) or filter to the page or
+  query before reporting absence.
+- **Regex filters:** `--filter "query:includingRegex:(?i)^how "` (repeatable).
+  Case-sensitive unless the pattern starts with `(?i)`. `gsc_query.py buckets`
+  splits clicks and impressions into brand / non-brand (`--brand-regex`),
+  question and query-length buckets with one dimensionless query per bucket;
+  anonymized queries match no filter, so the remainder is reported separately.
 - For accurate site totals, omit `query` and `page` dimensions. Query rows can
   omit anonymized low-volume traffic and must not be summed as site totals.
 - Only present totals as authoritative when the script returns
@@ -162,3 +171,7 @@
 |-------|--------|
 | `siteUrl` | Property URL (e.g., `sc-domain:example.com`) |
 | `permissionLevel` | `siteOwner`, `siteFullUser`, `siteRestrictedUser`, `siteUnverifiedUser` |
+
+`siteUnverifiedUser` means the account has no data access to that property: access
+was lost (owner removed the account or verification lapsed). Queries return 403.
+Report it as lost access, never as a property with no traffic.

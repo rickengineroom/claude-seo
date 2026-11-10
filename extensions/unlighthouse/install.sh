@@ -15,7 +15,7 @@ main() {
     echo "════════════════════════════════════════"
 
     command -v python3 >/dev/null 2>&1 || { echo "✗ Python 3 required."; exit 1; }
-    command -v npx     >/dev/null 2>&1 || { echo "✗ Node 18+ / npx required."; exit 1; }
+    command -v npx     >/dev/null 2>&1 || { echo "✗ Node 22.18+ / npx required."; exit 1; }
 
     # Support both traditional (curl|bash → ~/.claude/skills/seo) and marketplace
     # (plugin install → ${CLAUDE_PLUGIN_ROOT}, or ~/.claude/plugins/cache/.../skills/seo)
@@ -36,7 +36,7 @@ main() {
     [ ! -d "${SEO_SKILL_DIR}" ] && { echo "✗ claude-seo base not installed."; exit 1; }
 
     echo "→ Pre-warming unlighthouse..."
-    npx --yes --package=unlighthouse@0.13.5 unlighthouse-ci --help >/dev/null 2>&1 || true
+    npx --yes --package=unlighthouse@0.19.1 unlighthouse-ci --help >/dev/null 2>&1 || true
 
     mkdir -p "${SKILL_DIR}/seo-unlighthouse"
     cp "${SOURCE_DIR}/skills/seo-unlighthouse/SKILL.md" "${SKILL_DIR}/seo-unlighthouse/SKILL.md"

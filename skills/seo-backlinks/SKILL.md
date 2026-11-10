@@ -4,7 +4,7 @@ description: "Analyze a site's backlink profile, anchors, toxic signals, competi
 user-invocable: true
 argument-hint: "<url>"
 license: MIT
-compatibility: "Free: Common Crawl + verify always available. Optional: Moz API, Bing Webmaster, Keywords Everywhere (free signup). Premium: DataForSEO extension."
+compatibility: "Free: Common Crawl + verify always available. Optional: Moz API, Bing Webmaster, Keywords Everywhere (free signup). Premium: Semrush connector (main session fetches, this skill or its agent analyses), DataForSEO extension."
 metadata:
   author: AgriciDaniel
   version: "2.5.0"
@@ -17,6 +17,16 @@ metadata:
 
 Before analysis, detect available data sources:
 
+0. **Semrush connector** (premium, main session only): the Semrush tools
+   (backlinks_research, `competitors_research`, `get_report_schema`,
+   `execute_report`; method in the seo-semrush skill) are loaded in the main session.
+   Subagents, including the seo-backlinks agent, cannot call them. The main session runs
+   the pulls first, saves them with a params sidecar, and passes the file paths to the
+   agent. Pulls: backlinks_overview (add `authority_score` to `export_columns`, it is
+   not a default column), backlinks_refdomains, backlinks_anchors,
+   backlinks_historical; for gaps backlinks_matrix or backlinks_comparison. (Semrush
+   report names are written without backticks so they are not read as DataForSEO
+   MCP tool names, several of which share the backlinks_ prefix.)
 1. **DataForSEO MCP** (premium): Check if `backlinks_summary` tool is available
 2. **Moz API** (free signup): `"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run backlinks_auth.py --check moz --json`
 3. **Bing Webmaster** (free signup): `"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run backlinks_auth.py --check bing --json`
@@ -29,6 +39,14 @@ Run `"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run backlinks_auth.py --check --
 If no sources are configured beyond the always-available tier:
 - Still produce a report using Common Crawl domain metrics
 - Suggest: "Run `/seo backlinks setup` to add free Moz and Bing API keys for richer data"
+
+**Free-tier limit.** With no Moz or Bing key (`backlinks_auth.py --check` reports
+Tier 0), the only free backlink source is Common Crawl's domain-level graph: rank and
+presence for the domain, no referring-domain list, no link counts, no anchors, no
+individual links, refreshed with each monthly web-graph release. That is not enough to
+score a profile: the result is INSUFFICIENT DATA. Link-level evidence then comes only
+from Semrush pulls made by the main session, or from link lists the client supplies
+(checked with the verification crawler).
 
 ## Quick Reference
 
@@ -46,6 +64,8 @@ If no sources are configured beyond the always-available tier:
 Produce all 7 sections below. Each section lists data sources in preference order.
 
 ### 1. Profile Overview
+
+**Semrush (parent-fetched):** backlinks_overview with `authority_score` added → Authority Score, total backlinks, referring domains, follow/nofollow; backlinks_historical for the monthly trend.
 
 **DataForSEO:** `backlinks_summary` → total backlinks, referring domains, domain rank, follow ratio, trend.
 
@@ -65,6 +85,8 @@ Produce all 7 sections below. Each section lists data sources in preference orde
 | Trend | Growing or stable | Slow decline | Rapid decline (>20%/quarter) |
 
 ### 2. Anchor Text Distribution
+
+**Semrush (parent-fetched):** backlinks_anchors
 
 **DataForSEO:** `backlinks_anchors`
 
@@ -86,6 +108,8 @@ Produce all 7 sections below. Each section lists data sources in preference orde
 Flag if exact-match anchors exceed 15% as a review heuristic; it may indicate unnatural or link-spam patterns.
 
 ### 3. Referring Domain Quality
+
+**Semrush (parent-fetched):** backlinks_refdomains (add `domain_authority_score`; `first_seen` and `last_seen` give new-domain timing), backlinks_tld, backlinks_geo
 
 **DataForSEO:** `backlinks_referring_domains`
 
@@ -137,6 +161,8 @@ Find:
 
 ### 6. Competitor Gap Analysis
 
+**Semrush (parent-fetched):** `competitors_research` backlinks_matrix (referring domains shared or missing across targets) and backlinks_comparison (matched `targets` and `target_types` arrays)
+
 **DataForSEO:** `backlinks_referring_domains` for both domains, then compare
 
 **Bing Webmaster:** `"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run bing_webmaster.py compare <url1> <url2> --json`
@@ -157,7 +183,9 @@ Output:
 
 **Verification Crawler:** For known links, verify current status with `"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run verify_backlinks.py --target <url> --links <file> --json`
 
-**Note:** Free sources cannot track new/lost links over time. If this section is requested without DataForSEO, inform the user: "Link velocity tracking requires the DataForSEO extension. Free sources provide point-in-time snapshots only."
+**Semrush (parent-fetched):** backlinks_historical (monthly backlinks and referring domains) and backlinks_refdomains `first_seen` / `last_seen` for velocity.
+
+**Note:** Free sources cannot track new/lost links over time. If this section is requested without Semrush or DataForSEO, inform the user: "Link velocity tracking needs Semrush or DataForSEO data. Free sources provide point-in-time snapshots only."
 
 **Red flags:**
 - Sudden spike in new links (possible negative SEO attack)
@@ -170,13 +198,16 @@ Calculate a 0-100 score. When mixing sources, apply confidence weighting:
 
 | Factor | Weight | Sources (preference order) | Confidence |
 |--------|--------|---------------------------|------------|
-| Referring domain count | 20% | DataForSEO > Moz | 1.0 / 0.85 |
-| Domain quality distribution | 20% | DataForSEO > Moz DA distribution | 1.0 / 0.85 |
-| Anchor text naturalness | 15% | DataForSEO > Moz > Bing anchors | 1.0 / 0.85 / 0.70 |
-| Toxic link ratio | 20% | DataForSEO > Moz spam score | 1.0 / 0.85 |
-| Link velocity trend | 10% | DataForSEO only | 1.0 |
-| Follow/nofollow ratio | 5% | DataForSEO > Bing details | 1.0 / 0.70 |
-| Geographic relevance | 10% | DataForSEO > Bing country | 1.0 / 0.70 |
+| Referring domain count | 20% | Semrush / DataForSEO > Moz | 1.0 / 0.85 |
+| Domain quality distribution | 20% | Semrush AS profile / DataForSEO > Moz DA distribution | 1.0 / 0.85 |
+| Anchor text naturalness | 15% | Semrush / DataForSEO > Moz > Bing anchors | 1.0 / 0.85 / 0.70 |
+| Toxic link ratio | 20% | DataForSEO > Moz spam score (Semrush gives no toxicity score in the connector; use AS distribution plus the toxic patterns) | 1.0 / 0.85 |
+| Link velocity trend | 10% | Semrush backlinks_historical / DataForSEO | 1.0 |
+| Follow/nofollow ratio | 5% | Semrush / DataForSEO > Bing details | 1.0 / 0.70 |
+| Geographic relevance | 10% | Semrush backlinks_geo / DataForSEO > Bing country | 1.0 / 0.70 |
+
+Semrush figures carry their report, database and pull date; the 1.0 weight is this
+skill's relative source ranking, not a measured accuracy.
 
 **Data sufficiency gate:** Count how many of the 7 factors have at least one data source available.
 - **4+ factors with data:** Produce a numeric 0-100 score (redistribute missing weights proportionally)
@@ -210,10 +241,10 @@ now checkable. **Before writing any backlink output, run the validator:**
 ```
 
 Pass the sources you actually collected (`cc_data`, `moz_data`, `bing_data`,
-`dataforseo_data`, `scoring_factors`, and your `findings` list). The
+`semrush_data`, `dataforseo_data`, `scoring_factors`, and your `findings` list). The
 `source_score_consistency` check fails the report with `status: FAIL` when:
 
-- a numeric score is present but no scoreable source (Moz, Bing, or DataForSEO)
+- a numeric score is present but no scoreable source (Moz, Bing, Semrush or DataForSEO)
   supplied data -- i.e. the Common-Crawl-only case, and
 - any finding marked `source: not-assessed` carries a numeric `score`, `value`,
   or `health_score`.
@@ -252,6 +283,10 @@ it passes.
 | No backlink data returned | Domain too new or very small | Note: small sites may have <10 backlinks |
 
 **Fallback cascade:**
+0. Semrush pulls passed by the main session? → Use as primary for referring domains,
+   anchors, Authority Score, history and link gap (weight 1.0). Label every figure
+   "Semrush <report>, pulled <date>". If they were not passed and the main session has
+   the connector, return the list of pulls needed instead of reporting Semrush as absent.
 1. DataForSEO available? → Use as primary (confidence: 1.0)
 2. Moz configured? → Use for DA/PA/spam/anchors (confidence: 0.85)
 3. Bing configured? → Use for registered-property links and comparison only

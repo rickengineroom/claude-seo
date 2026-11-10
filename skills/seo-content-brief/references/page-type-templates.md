@@ -47,7 +47,7 @@ Select the template that matches the page type. Adapt sections based on the spec
 | Client situation | Context | 1-2 paragraphs, anonymise if needed |
 | The challenge | Problem framing | What was at stake |
 | Our approach | Show expertise | Step-by-step or narrative |
-| The result | Prove value | Specific figures, percentages, timelines |
+| The result | Prove value | Specific figures, percentages, dates |
 | Key takeaways | Reusable insight | 3-5 bullet points |
 | Related services CTA | Cross-sell | Link to the relevant service page |
 
@@ -70,6 +70,48 @@ Select the template that matches the page type. Adapt sections based on the spec
 **Schema:** Service + BreadcrumbList. Do not add FAQPage for Google visibility; no AI or ranking benefit is confirmed.
 **Primary keyword:** Category name, in H1, title, URL, first paragraph
 **Site Structure Rule:** MUST include every relevant sub-page from the sitemap.
+
+## Collection / Product Category (e-commerce)
+
+**Goal:** Rank for plural product queries where the top 10 shows category pages.
+
+| Section | Purpose | Format |
+|---------|---------|--------|
+| H1 + short intro | Confirm the range | 1-3 sentences above the grid |
+| Product grid + filters | Let shoppers narrow | Filters on attributes searchers use |
+| Buying guidance | Answer the result page's sub-questions | Short sections below the grid |
+| Related collections | Hub linking | Links to sibling and child collections |
+
+**Schema:** BreadcrumbList; Product data lives on product pages.
+**Primary keyword:** Collection name, in H1, title, URL
+
+## Product Page
+
+**Goal:** Convert a product-specific query.
+
+| Section | Purpose | Format |
+|---------|---------|--------|
+| Title, price, availability, CTA | Buy above the fold | Clear price and delivery facts |
+| Benefits and specs | Decide | Bullets + spec table |
+| Reviews | Trust | Real reviews with count |
+| Questions buyers ask | Remove doubts | Short answers on the page |
+
+**Schema:** Product with offers (price, availability) and reviews where real.
+**Primary keyword:** Product name + type, in H1, title, URL
+
+## Comparison Page
+
+**Goal:** Serve "vs", "alternative" and "best" queries where comparison pages rank.
+
+| Section | Purpose | Format |
+|---------|---------|--------|
+| Quick verdict | Answer first | "Best for" lines per option |
+| Comparison table | Evaluate | Criteria rows, sourced figures with dates |
+| Option sections | Depth | Pros, cons, who it suits |
+| Method note | Trust | How options were tested or sourced |
+
+**Schema:** Article or WebPage. Prices and features cited with dates.
+**Primary keyword:** "[A] vs [B]" or "[A] alternatives", in H1, title, URL
 
 ## Landing Page
 
@@ -146,7 +188,7 @@ Select the template that matches the page type. Adapt sections based on the spec
 | Why us (differentiators) | Stand out | 3-5 unique selling points |
 | Social proof | Trust | Testimonials, client logos, review stars |
 | Location/service area | Local relevance | Map or area list |
-| FAQ (for GEO) | AI search visibility | 4-6 broad business questions |
+| Common questions | Answer pre-sales questions | 4-6 questions taken from sales, reviews or Search Console |
 | CTA | Convert | Repeat primary action |
 
 **Schema:** Organization + WebSite + Service

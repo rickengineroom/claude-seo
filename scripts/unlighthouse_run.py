@@ -10,7 +10,7 @@ support without a paid Google Cloud bill.
 
 This wrapper:
   - Validates the target via url_safety before any subprocess starts.
-  - Invokes ``npx --yes unlighthouse-ci@0.13.5 …`` with sensible
+  - Invokes ``npx --yes --package unlighthouse@0.19.1 unlighthouse-ci …`` with sensible
     defaults (mobile form factor, JSON reporter, generated config file).
   - Captures the JSON result the CLI writes and returns it parsed,
     normalized to a flat route list regardless of which reporter shape
@@ -38,7 +38,8 @@ time budget, independent of the subprocess-level ``--timeout``.
 
 Prerequisites
 =============
-Node.js 18+ available on ``$PATH``. The first run downloads
+Node.js 22.18+ available on ``$PATH`` (unlighthouse 0.19.x declares
+``engines.node >=22.18.0``). The first run downloads
 unlighthouse; subsequent runs use the npx cache.
 
 Usage::
@@ -66,7 +67,7 @@ if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
 from url_safety import URLSafetyError, validate_url_strict  # noqa: E402
 
-UNLIGHTHOUSE_PIN = "unlighthouse@0.13.5"
+UNLIGHTHOUSE_PIN = "unlighthouse@0.19.1"
 
 # Numeric metadata keys that are not per-category scores; excluded from
 # aggregate score averaging so a route's `score` (the Lighthouse overall
@@ -78,7 +79,7 @@ def _check_node() -> str | None:
     """Return None if Node is OK, else an error message."""
     npx = shutil.which("npx")
     if not npx:
-        return ("npx not found on PATH. Install Node.js 18+ "
+        return ("npx not found on PATH. Install Node.js 22.18+ "
                 "(https://nodejs.org) and re-run.")
     return None
 
@@ -116,9 +117,9 @@ def build_cmd(target: str, *, device: str, out_dir: Path, config_path: Path) -> 
         "--desktop" if device == "desktop" else "--mobile",
         "--output-path", str(out_dir),
         "--config-file", str(config_path),
-        # The real flag is `--build-static` (ci.ts); the CLI declares it
-        # with a required value placeholder, so pass it explicitly.
-        "--build-static", "true",
+        # `--build-static` (ci.ts) is a boolean flag from 0.19 on; 0.13.x
+        # declared it with a value placeholder.
+        "--build-static",
     ]
 
 

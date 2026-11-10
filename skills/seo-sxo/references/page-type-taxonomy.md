@@ -1,8 +1,14 @@
 # Page Type Taxonomy for SERP Classification
 
 Classify every page -- both the target URL and each SERP result -- into exactly one
-of these 8 types. When signals overlap, choose the type with the strongest primary
-signal match.
+type. Types 1-8 are below; types 9-14 (Category / Collection, Product Listing,
+Homepage, Case Study, Forum / Community, Video) and Location Page notes are in
+`page-type-taxonomy-extended.md` in this folder. When signals overlap, choose the
+type with the strongest primary signal match, using the priority list at the end.
+
+FAQ sections below are on-page content (questions answered in the body), not
+FAQPage markup. FAQ rich results stopped on 7 May 2026 and HowTo rich results ended
+in 2023; never list FAQPage or HowTo schema as a required element.
 
 ---
 
@@ -131,7 +137,7 @@ option, clear recommendation or "best for" segmentation, ItemList or Table schem
 
 ---
 
-## 7. Local Page
+## 7. Location Page (formerly "Local Page")
 
 **Primary signals:** physical address displayed, Google Maps embed, NAP
 (Name, Address, Phone) in consistent format, service area description,
@@ -177,11 +183,18 @@ tool above fold, clear input/output flow, no login wall for basic functionality.
 
 When a page shows signals for multiple types, use this priority:
 
-1. If interactive tool is present and functional: **Tool**
-2. If physical address + map: **Local** (unless tool is primary)
-3. If comparison table + "vs" framing: **Comparison**
-4. If price + buy button: **Product**
-5. If CTA-heavy + minimal navigation: **Landing Page**
-6. If service process + case studies: **Service Page**
-7. If educational + CTA mix: **Hybrid**
-8. Default: **Blog Post**
+1. If the URL is the site root or the brand's main entry page: **Homepage**
+2. If it is a forum thread, Q&A thread or user-generated discussion: **Forum / Community**
+3. If the main content is a video player page (YouTube, Vimeo, TikTok): **Video**
+4. If interactive tool is present and functional: **Tool**
+5. If physical address + map for one place: **Location Page** (unless tool is primary)
+6. If a grid of products from many sellers or a marketplace search: **Product Listing**
+7. If a grid of one merchant's products under a taxonomy node: **Category / Collection**
+8. If comparison table + "vs" framing: **Comparison**
+9. If price + buy button for one product: **Product**
+10. If one client story with problem, work and outcome: **Case Study**
+11. If CTA-heavy + minimal navigation: **Landing Page**
+12. If service process + case studies: **Service Page**
+13. If educational + CTA mix: **Hybrid**
+14. If article body with byline or date: **Blog Post**
+15. Otherwise: **Unclassified**; say which signals were missing. Do not default to Blog Post.

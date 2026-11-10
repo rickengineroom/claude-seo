@@ -11,11 +11,22 @@ content architecture rather than relying on keyword text similarity or stemming.
 
 ### Step 1: Collect SERP Data
 
-For each keyword in the candidate set, retrieve the top 10 organic results:
-- Use WebSearch or DataForSEO `serp_organic_live_advanced`
+For each keyword in the candidate set, retrieve the top 10 organic results **for the
+target market**:
+- Semrush `phrase_organic` (`database` = market, `display_limit: 10`,
+  `export_columns: [position, url, domain, triggered_serp_features]`), or DataForSEO
+  `serp_organic_live_advanced` with the market's `location_code` and `language_code`
+  when that MCP is configured. WebSearch is not a source: it returns titles and URLs
+  for US results only, without ranked positions.
 - Extract only organic result URLs (ignore ads, featured snippets, PAA, knowledge panels)
+- Keep `triggered_serp_features` per keyword (needed for anti-pattern 4 and the
+  AI Overview attribute)
 - Normalize URLs: strip protocol, trailing slash, and query parameters (except meaningful ones)
-- Store as a set of 10 URLs per keyword
+- Store as a set of 10 URLs per keyword with the source, database and data date
+
+**Stop rule:** if no source returns real top-10 URLs for the market, do not
+produce overlap scores. Report "SERP-overlap evidence for <market> could not be
+obtained" and stop; do not fall back to intent-only clustering or assumed scores.
 
 ### Step 2: Pairwise Comparison
 
@@ -37,9 +48,13 @@ For each pair of keywords (A, B):
 
 Scores in the 3-4 range require tiebreaking:
 1. Check domain overlap (same domains but different pages = closer relationship)
-2. Check intent alignment (same intent category = lean toward same cluster)
-3. Check volume ratio (if one keyword has 10x+ more volume, it likely deserves its own post)
+2. Check intent alignment (same result-page intent = lean toward same cluster)
+3. Check volume ratio from Semrush for the same database (if one keyword has 10x+
+   more volume, it may deserve its own post); no volume data = no volume tiebreak
 4. When in doubt, keep in same cluster with separate posts (err toward cohesion)
+
+These thresholds (3 shared URLs, 4 of 10, 7 of 10) are working conventions, not
+validated cut-offs. State them as such in the plan.
 
 ## Optimization Strategy
 
@@ -48,18 +63,20 @@ keywords, that is 780 comparisons. Optimize by reducing unnecessary checks:
 
 ### Pre-Grouping
 
-1. Classify all keywords by intent (Informational, Commercial, Transactional)
+1. Group keywords by the Semrush intent label (a grouping aid only, not a verdict)
 2. Group keywords that share the same head term (e.g., "CRM software" variants)
 3. Only run pairwise SERP comparison within pre-groups
 4. Cross-check boundary keywords (highest volume in each group) across groups
 
-### Skip Rules
+Pairwise comparison costs no extra API calls once each keyword's top 10 is cached:
+it is set arithmetic. The cost is one `phrase_organic` call per keyword, so the
+pre-grouping mainly limits review effort, not data pulls.
 
-- If keywords A and B are both long-tail variants of the same head term AND share
-  the same intent, assume overlap 4-6 (same cluster) without checking SERP
-- If keywords are in different intent categories, assume overlap 0-2 unless they
-  share a head term
-- Verify assumptions with spot-check SERP comparisons (sample 20% of skipped pairs)
+### Unchecked Pairs
+
+- A pair that was not compared is recorded as `null` (unchecked) in the matrix,
+  never as an assumed score.
+- Do not merge, group or separate on an unchecked pair. Compare it or leave it out.
 
 ## Scoring Matrix Format
 
@@ -91,15 +108,21 @@ Diagonal is always 10 (a keyword overlaps perfectly with itself).
    keyword B triggers a featured snippet, they likely need different content types
    even with moderate URL overlap.
 5. **Never treat all domains equally.** Wikipedia and Reddit appear in many SERPs.
-   Consider filtering out ubiquitous domains (top 5 most common) before scoring, or
-   weighting domain-specific results higher.
+   Consider filtering out ubiquitous domains (top 5 most common) before overlap
+   scoring, or weighting domain-specific results higher. Keep them when judging
+   intent: a Reddit-heavy or marketplace-heavy top 10 is itself an intent signal.
 
 ## Data Source Priority
 
-1. **DataForSEO** (if available): Most reliable, consistent SERP data. Use
-   `serp_organic_live_advanced` with `location_code: 2840` (US) and `language_code: "en"`.
-2. **WebSearch** (fallback): Adequate for clustering but results may vary by session.
-   Run multiple searches for the same keyword and use the most common result set.
+The market is a parameter, never a constant. Use the same market for every keyword
+in one plan.
+
+1. **Semrush** (connected): `phrase_organic` with `database` set to the market
+   (`us`, `uk`, `au`, `sg`, `id`, `mobile-au`, ...). Record the data date.
+2. **DataForSEO** (if configured): `serp_organic_live_advanced` with the market's
+   `location_code` and `language_code` (for example Australia + `en`, Singapore +
+   `en`, Indonesia + `id`). Run the cost check first.
+3. **No source:** stop (see the stop rule in Step 1). WebSearch is not a fallback.
 
 ## Caching
 

@@ -8,10 +8,16 @@ Original concept: Chris Muller (Pro Hub Challenge)
 
 ## Number Formats
 
+Number, date and currency rows for en-AU, en-SG and id-ID were checked against
+CLDR 48 (via Node.js Intl, ICU 78.2) on 2026-11-10.
+
 | Locale | Thousands | Decimal | Example |
 |--------|-----------|---------|---------|
 | en-US | , | . | 1,234.56 |
 | en-GB | , | . | 1,234.56 |
+| en-AU | , | . | 1,234.56 |
+| en-SG | , | . | 1,234.56 |
+| id-ID | . | , | 1.234,56 |
 | de-DE | . | , | 1.234,56 |
 | de-AT | . | , | 1.234,56 |
 | de-CH | ' | . | 1'234.56 |
@@ -32,6 +38,9 @@ Original concept: Chris Muller (Pro Hub Challenge)
 |--------|--------|---------|
 | en-US | MM/DD/YYYY | 04/14/2026 |
 | en-GB | DD/MM/YYYY | 14/04/2026 |
+| en-AU | DD/MM/YYYY | 14/04/2026 |
+| en-SG | DD/MM/YYYY | 14/04/2026 |
+| id-ID | D/M/YYYY or DD/MM/YYYY | 14/4/2026 |
 | de-DE | DD.MM.YYYY | 14.04.2026 |
 | fr-FR | DD/MM/YYYY | 14/04/2026 |
 | es-ES | DD/MM/YYYY | 14/04/2026 |
@@ -46,6 +55,9 @@ Original concept: Chris Muller (Pro Hub Challenge)
 |--------|--------|-----------|---------|
 | en-US | $ | Before | $1,234.56 |
 | en-GB | £ | Before | £1,234.56 |
+| en-AU | $ (A$ or AUD when other dollars appear) | Before | $1,234.56 |
+| en-SG | $ (S$ or SGD when other dollars appear) | Before | $1,234.56 |
+| id-ID | Rp | Before (space) | Rp 1.234.568 (no decimals) |
 | de-DE | € | After (space) | 1.234,56 € |
 | fr-FR | € | After (space) | 1 234,56 € |
 | es-ES | € | After (space) | 1.234,56 € |
@@ -71,6 +83,9 @@ Original concept: Chris Muller (Pro Hub Challenge)
 |--------|--------|---------|
 | US | +1 (XXX) XXX-XXXX | +1 (512) 555-0123 |
 | UK | +44 XXXX XXXXXX | +44 2071 234567 |
+| AU | +61 X XXXX XXXX | +61 2 9876 5432 |
+| SG | +65 XXXX XXXX | +65 6123 4567 |
+| ID | +62 XX XXXX XXXX (mobile +62 8XX XXXX XXXX) | +62 21 1234 5678 |
 | DE | +49 XXX XXXXXXX | +49 30 12345678 |
 | FR | +33 X XX XX XX XX | +33 1 23 45 67 89 |
 | JP | +81 X-XXXX-XXXX | +81 3-1234-5678 |

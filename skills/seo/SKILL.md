@@ -50,7 +50,7 @@ extension is also installable (see "Optional Extensions" below).
 | `/seo maps [command] [args]` | Maps intelligence (geo-grid, GBP audit, reviews, competitors) |
 | `/seo hreflang [url]` | Hreflang/i18n SEO audit and generation |
 | `/seo google [command] [url]` | Google SEO APIs (GSC, PageSpeed, CrUX, Indexing, GA4) |
-| `/seo backlinks <url>` | Backlink profile analysis (free: Moz, Bing, CC; premium: DataForSEO) |
+| `/seo backlinks <url>` | Backlink profile analysis (free: Moz, Bing, CC; premium: Semrush via the parent session, DataForSEO) |
 | `/seo cluster <seed-keyword>` | SERP-based semantic clustering and content architecture |
 | `/seo sxo <url>` | Search Experience Optimization: page-type analysis, user stories, personas |
 | `/seo drift baseline <url>` | Capture SEO baseline for change monitoring |
@@ -85,9 +85,9 @@ When the user invokes `/seo audit`, delegate to subagents in parallel:
 3. If Google API credentials detected (`"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run google_auth.py --check`), also spawn seo-google agent
 4. If Matomo credentials detected (`"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run matomo_auth.py --check`), also spawn seo-matomo agent (alternative or complement to seo-google's GA4 reports)
 5. If local business detected, also spawn seo-local agent
-6. If local business detected AND DataForSEO MCP available, also spawn seo-maps agent
-7. Spawn seo-backlinks agent for Common Crawl domain-level metrics, adding Moz and Bing data when their credentials are detected (`"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run backlinks_auth.py --check`)
-8. If Firecrawl MCP available, use `firecrawl_map` to discover all site URLs before analysis
+6. If local business detected, also spawn seo-maps agent, whether or not DataForSEO is configured. Before spawning, the parent session runs the free Local Falcon reads (`mcp__local-falcon__*`, method in the `local-falcon-mcp` skill: saved locations, latest scan reports, GBP profile and reviews) and passes the results; never start a credit-spending Local Falcon scan without the user's approval
+7. Spawn seo-backlinks agent for Common Crawl domain-level metrics, adding Moz and Bing data when their credentials are detected (`"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run backlinks_auth.py --check`). If the Semrush connector is loaded in the main session, the parent first runs the Semrush link and ranking pulls (seo-semrush skill: backlinks_overview with `authority_score`, backlinks_refdomains, backlinks_anchors, `domain_rank`, `resource_organic`, `domain_organic_organic`, in the client's search-market database) and hands the saved files to seo-backlinks
+8. If the Firecrawl CLI is authenticated (`firecrawl --status`), run `firecrawl map <url> --limit <n> --json` to discover site URLs before analysis (1 credit per map call); otherwise use the sitemap and crawl via `render_page.py`
 9. If content strategy signals detected (blog, pillar pages, topic clusters), also spawn seo-cluster agent
 10. If e-commerce detected, also spawn seo-ecommerce agent
 11. If drift baseline exists for this URL (`"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run drift_history.py <url>`), also spawn seo-drift agent
@@ -96,6 +96,14 @@ When the user invokes `/seo audit`, delegate to subagents in parallel:
 14. **Synthesize via the 10-principle framework** (see "Synthesis Methodology" below), walk PERCEIVE → ANALYZE → VALIDATE → ACT before bucketing findings into Critical / High / Medium / Low
 15. Create prioritized action plan with dependency sequencing + falsifiability per recommendation
 16. **Offer PDF report**: "Generate a professional PDF report? Use `/seo google report full`"
+
+**Connector data is fetched by the parent.** Subagents run with a fixed `tools:` list
+and cannot see MCP or claude.ai connector tools (Semrush, Local Falcon) even when the
+main session can. So the main session makes those calls, saves the results under the
+audit's output directory, and passes the paths in the subagent prompt. A subagent that
+lacks connector data returns the list of pulls it needs; it must not report the
+connector as "not connected". The same applies to the `seo-semrush` agent, which is
+installed from Rick's agency-skills repo rather than this one.
 
 For individual commands, load the relevant sub-skill directly.
 After any analysis command completes, offer to generate a PDF report via `"${CLAUDE_PLUGIN_ROOT}/scripts/claude-seo" run google_report.py`.
@@ -217,13 +225,18 @@ Weighted aggregate of all categories:
 
 | Category | Weight |
 |----------|--------|
-| Technical SEO | 22% |
-| Content Quality | 23% |
-| On-Page SEO | 20% |
+| Technical SEO | 20% |
+| Content Quality | 20% |
+| On-Page SEO | 15% |
+| Search Intent & Page Type | 15% |
 | Schema / Structured Data | 10% |
 | Performance (CWV) | 10% |
-| AI Search Readiness | 10% |
+| AI Search Readiness | 5% |
 | Images | 5% |
+
+Same weights as seo-audit (single source). Search Intent & Page Type is scored from seo-sxo and
+seo-cluster evidence; when result-page evidence could not be obtained, mark the category
+"not scored" and re-weight the rest rather than guessing.
 
 ### Priority Levels
 - **Critical**: Blocks indexing or causes penalties (immediate fix required)
@@ -274,9 +287,11 @@ installed: firecrawl, dataforseo, and image-gen, plus `/seo ahrefs`,
 `/seo unlighthouse`. Each installs as its own sub-skill, so the model also
 auto-routes to their descriptions without the `/seo` prefix.
 
-- **seo-firecrawl** -- Full-site crawling and site mapping via Firecrawl MCP. Install
-  via `extensions/firecrawl/install.sh` (Unix) or `extensions/firecrawl/install.ps1`
-  (Windows). Once installed, invoke via `/seo firecrawl <command>`.
+- **seo-firecrawl** -- Full-site crawling and site mapping through the authenticated
+  Firecrawl CLI (`firecrawl --status` shows auth and credits). Install the skill via
+  `extensions/firecrawl/install.sh` (Unix) or `extensions/firecrawl/install.ps1`
+  (Windows); the CLI itself is `npm install -g firecrawl-cli` then `firecrawl login`.
+  Invoke via `/seo firecrawl <command>`. WebFetch stays the free path for single pages.
 - **seo-matomo** -- Self-hosted or Matomo Cloud Reporting API as a GA4
   alternative or complement. Install via
   `extensions/matomo/install.sh` (Unix) or `extensions/matomo/install.ps1`
@@ -296,9 +311,9 @@ For parallel analysis during audits:
 - `seo-geo` -- AI crawler access, llms.txt, citability, brand mention signals
 - `seo-agentic` -- Lighthouse Agentic Browsing fraction, accessibility tree for agents, AI agent access policy, Markdown, discovery files, WebMCP (always in full audits)
 - `seo-local` -- GBP signals, NAP consistency, reviews, local schema, industry-specific local factors (conditional: spawned when Local Service detected)
-- `seo-maps` -- Geo-grid rank tracking, GBP audit, review intelligence, competitor radius mapping (conditional: spawned when Local Service detected AND DataForSEO MCP available)
+- `seo-maps` -- Geo-grid rank tracking, GBP audit, review intelligence, competitor radius mapping (conditional: spawned when Local Service detected; the parent passes Local Falcon data first, DataForSEO is optional)
 - `seo-google` -- CWV field data, URL indexation status, organic traffic trends (conditional: spawned when Google API credentials detected)
-- `seo-backlinks` -- Backlink profile data: DA/PA, referring domains, anchor text, toxic links (conditional: spawned when Moz/Bing API keys detected or always for CC domain-level metrics)
+- `seo-backlinks` -- Backlink profile data: referring domains, anchor text, toxic links (always for CC domain-level metrics; adds Moz/Bing when keys are detected and Semrush pulls when the parent passes them)
 - `seo-cluster` -- Semantic clustering analysis (conditional: content strategy detected)
 - `seo-sxo` -- Page-type mismatch, user stories, persona scoring (always in full audits)
 - `seo-drift` -- Baseline comparison (conditional: drift baseline exists for URL)

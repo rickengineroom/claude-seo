@@ -7,7 +7,15 @@ extract PageRank, harmonic centrality, crawl/ranking presence, and host counts.
 No API key needed (public data).
 
 Data source: s3://commoncrawl/projects/hyperlinkgraph/
-Releases: Quarterly (cc-main-YYYY-mon-mon-mon)
+Releases: monthly, each covering a rolling three-month window
+(cc-main-YYYY-mon-mon-mon, or cc-main-YYYY-YY-mon-mon-mon across a year end).
+The release list is read from https://commoncrawl.org/web-graphs at run time,
+with KNOWN_RELEASES as the offline fallback.
+
+Free-tier limit: this is domain-level rank and crawl presence only. It has no
+referring-domain list, anchors, link counts or link velocity. With no Moz or
+Bing Webmaster key it is the only free backlink source, so a backlink health
+score from it alone is INSUFFICIENT DATA.
 
 Usage:
     python commoncrawl_graph.py example.com --json
@@ -42,17 +50,35 @@ except ImportError:
 # Common Crawl web graph base URL (HTTP access to S3 bucket)
 CC_GRAPH_BASE = "https://data.commoncrawl.org/projects/hyperlinkgraph"
 
-# Known recent releases (newest first).
-# Update periodically: check https://commoncrawl.github.io/cc-webgraph-statistics/
-# Naming convention: cc-main-YYYY-mon-mon-mon (quarterly, lowercase month abbreviations)
+# Release index page, parsed at run time for the newest release names.
+CC_GRAPH_INDEX = "https://commoncrawl.org/web-graphs"
+
+# Offline fallback (newest first), from the index page on 2026-11-10.
+# Releases are monthly, each a rolling three-month window; a window crossing
+# a year end is named cc-main-YYYY-YY-mon-mon-mon.
 KNOWN_RELEASES = [
+    "cc-main-2026-aug-sep-oct",
+    "cc-main-2026-jul-aug-sep",
+    "cc-main-2026-jun-jul-aug",
+    "cc-main-2026-may-jun-jul",
+    "cc-main-2026-apr-may-jun",
+    "cc-main-2026-mar-apr-may",
+    "cc-main-2026-feb-mar-apr",
     "cc-main-2026-jan-feb-mar",
+    "cc-main-2025-26-dec-jan-feb",
+    "cc-main-2025-26-nov-dec-jan",
     "cc-main-2025-oct-nov-dec",
-    "cc-main-2025-jul-aug-sep",
-    "cc-main-2025-apr-may-jun",
-    "cc-main-2025-jan-feb-mar",
-    "cc-main-2024-oct-nov-dec",
+    "cc-main-2025-sep-oct-nov",
 ]
+
+FREE_TIER_LIMITATION = (
+    "Common Crawl gives domain-level rank and crawl presence only: no referring-domain "
+    "list, anchors, link counts or link velocity. Without a Moz or Bing Webmaster key "
+    "(or parent-supplied Semrush data) the backlink health score is INSUFFICIENT DATA."
+)
+
+_RELEASE_NAME_RE = re.compile(r"cc-main-(\d{4})(?:-\d{2})?-([a-z]{3})-[a-z]{3}-[a-z]{3}")
+_MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
 
 # Graph file types: filenames include the release name as prefix
 # e.g., domain/cc-main-2026-jan-feb-mar-domain-vertices.txt.gz
@@ -74,16 +100,51 @@ def _safe_float(s: str) -> Optional[float]:
         return None
 
 
+def _release_sort_key(release: str) -> tuple:
+    """(year, first month) of a release name, for newest-first ordering."""
+    match = _RELEASE_NAME_RE.fullmatch(release)
+    if not match or match.group(2) not in _MONTHS:
+        return (0, 0)
+    return (int(match.group(1)), _MONTHS.index(match.group(2)) + 1)
+
+
+def _discover_releases(timeout: int = 15) -> list:
+    """Read release names from the Common Crawl web graph index page.
+
+    Returns names newest first, or an empty list when the page cannot be read.
+    """
+    try:
+        resp = requests.get(CC_GRAPH_INDEX, timeout=timeout)
+        if resp.status_code != 200:
+            return []
+        names = {m.group(0) for m in _RELEASE_NAME_RE.finditer(resp.text)}
+    except requests.exceptions.RequestException:
+        return []
+    return sorted(names, key=_release_sort_key, reverse=True)
+
+
+def _candidate_releases() -> list:
+    """Live release names first, then the offline fallback, without duplicates."""
+    seen = set()
+    ordered = []
+    for release in [*_discover_releases(), *KNOWN_RELEASES]:
+        if release not in seen and _RELEASE_RE.match(release):
+            seen.add(release)
+            ordered.append(release)
+    return ordered
+
+
 def _get_latest_release() -> Optional[str]:
     """
     Discover the latest available CC web graph release.
 
-    Tries known releases in order, returns the first one that exists.
+    Reads the release index page, then tries releases newest first (falling
+    back to KNOWN_RELEASES) and returns the first whose domain file exists.
 
     Returns:
-        Release name (e.g., 'cc-main-2026-jan-feb-mar') or None.
+        Release name (e.g., 'cc-main-2026-aug-sep-oct') or None.
     """
-    for release in KNOWN_RELEASES:
+    for release in _candidate_releases()[:6]:
         url = _graph_file_url(release, VERTICES_SUFFIX)
         try:
             resp = requests.head(url, timeout=10, allow_redirects=True)
@@ -322,7 +383,7 @@ def get_domain_metrics(domain: str, release: Optional[str] = None,
 
     # Build appropriate note based on what we found
     if in_rankings:
-        note = "Domain-level metrics from CC web graph. Quarterly updates."
+        note = "Domain-level metrics from CC web graph. Monthly releases, three-month window."
     elif in_crawl:
         note = "Domain found in CC crawl but below ranking threshold (too small/new for PageRank rankings)."
     else:
@@ -340,6 +401,7 @@ def get_domain_metrics(domain: str, release: Optional[str] = None,
             "harmonic_centrality_rank": rankings_data.get("harmonic_centrality_rank"),
             "n_hosts": rankings_data.get("n_hosts"),
             "note": note,
+            "limitations": FREE_TIER_LIMITATION,
         },
         "error": None,
         "metadata": {
@@ -374,6 +436,8 @@ def get_graph_info() -> dict:
         "data": {
             "latest_release": latest,
             "known_releases": KNOWN_RELEASES,
+            "release_index": CC_GRAPH_INDEX,
+            "limitations": FREE_TIER_LIMITATION,
             "cache_dir": cache_dir,
             "cached_files": len(cached_files),
             "cached_domains": [f.split("-cc-main")[0] for f in cached_files],

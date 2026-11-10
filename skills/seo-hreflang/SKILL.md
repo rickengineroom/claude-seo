@@ -33,9 +33,16 @@ XML sitemap implementations.
 - Missing return tags invalidate the hreflang signal for both pages
 - Check all language versions reference each other (full mesh)
 
-### 3. x-default Tag
-- Recommended when a selector/fallback URL exists: designates the fallback page for unmatched languages/regions
-- Typically points to the language selector page or English version
+### 3. x-default Tag (optional, not required)
+- Google does not require x-default. Its localized-versions guide
+  (https://developers.google.com/search/docs/specialty/international/localized-versions,
+  last updated 2026-09-21) says the value "is recommended for specifying the
+  fallback page" for unmatched language settings, and suggests considering a
+  fallback "especially on language/country selectors or auto-redirecting home pages".
+- Report a missing x-default as **Info**. Raise it to Medium only when the site has
+  a language/country selector or an auto-redirecting homepage. Never report it as
+  an error or as a reason the hreflang set is invalid.
+- When used: typically points to the language selector page or a generic version
 - Only one x-default per set of alternates
 - Must also have return tags from all other language versions
 
@@ -88,6 +95,47 @@ XML sitemap implementations.
   regional documentation, so the client is not surprised by a different result
   layout in those markets.
 
+### 5d. Same-Language Regional Variants (en-SG, en-AU, en-GB, en-US)
+- Use regional codes when the English pages differ by market: currency and prices,
+  delivery and returns, tax wording (GST in AU and SG, VAT in the UK, sales tax in
+  the US), legal pages, spelling (en-AU, en-GB and en-SG copy normally uses British
+  spelling, en-US American) and date format (DD/MM/YYYY vs MM/DD/YYYY).
+- Codes: `en-SG`, `en-AU`, `en-GB` (never `en-UK`), `en-US`. Google accepts any case.
+- Google's guide recommends a catchall for "geographically unspecified users of
+  that language" when several same-language regional URLs exist: add a generic `en`
+  alternate (it can be one of the regional pages).
+- Each regional page must canonicalise to itself. Never canonical `en-AU` to
+  `en-US` "because the copy is similar": that removes the AU URL from the set.
+- Near-identical regional pages are allowed with hreflang, but if only the currency
+  symbol changes, say so: Google may still pick one URL as canonical. Localise the
+  facts that differ (price, delivery, tax, contact) so each page earns its place.
+- Verify outcome per country in Search Console (Performance, filter by country and
+  page); there is no country-targeting setting to lean on.
+
+```html
+<link rel="alternate" hreflang="en-SG" href="https://example.com/en-sg/" />
+<link rel="alternate" hreflang="en-AU" href="https://example.com/en-au/" />
+<link rel="alternate" hreflang="en-GB" href="https://example.com/en-gb/" />
+<link rel="alternate" hreflang="en-US" href="https://example.com/" />
+<link rel="alternate" hreflang="en" href="https://example.com/" />
+<link rel="alternate" hreflang="id-ID" href="https://example.com/id-id/" />
+```
+
+For Indonesian use `id` or `id-ID`, never `in` (withdrawn ISO 639 code) or `ind`
+(ISO 639-2). Load the Indonesian profile in `references/cultural-profiles.md`.
+
+### 5e. Shopify Markets Subfolders
+- Shopify: "Language-only subfolders such as /fr or /en can only exist on your
+  primary market." Secondary markets must combine language and country, for
+  example `/en-au/`, `/en-sg/`, `/id-id/`
+  (https://help.shopify.com/en/manual/international/managing-international-domains).
+- Shopify generates hreflang tags for each market domain or subfolder. Audit the
+  emitted tags in the page source rather than assuming them, and flag any market
+  suffix that is not an ISO 3166-1 country (for example a regional `/en-eu/`),
+  because a region code like `EU` is not valid in hreflang.
+- Do not recommend `/en/` or `/au/` style subfolders for a Shopify secondary market;
+  the platform will not create them.
+
 ### 6. Canonical URL Alignment
 - Hreflang tags must only appear on canonical URLs
 - If a page has `rel=canonical` pointing elsewhere, hreflang on that page is ignored
@@ -111,7 +159,10 @@ XML sitemap implementations.
 |-------|----------|-----|
 | Missing self-referencing tag | Critical | Add hreflang pointing to same page URL |
 | Missing return tags (A→B but no B→A) | Critical | Add matching return tags on all alternates |
-| Missing x-default when fallback behavior is required | Medium | Add x-default pointing to fallback/selector page |
+| Missing x-default (no selector or auto-redirect) | Info | Optional; Google recommends but does not require it |
+| Missing x-default on a site with a language/country selector or auto-redirecting homepage | Medium | Add x-default pointing to the selector/fallback page |
+| Regional English page canonicalised to another region | High | Self-referencing canonical on each regional page |
+| `in` used for Indonesian | High | Use `id` or `id-ID` |
 | Invalid language code (e.g., `eng`) | High | Use ISO 639-1 two-letter codes |
 | Invalid region code (e.g., `en-uk`) | High | Use ISO 3166-1 Alpha-2 codes |
 | Hreflang on non-canonical URL | High | Move hreflang to canonical URL only |
@@ -165,7 +216,8 @@ See Hreflang Sitemap Generation section below.
 3. **Validate language codes**: Verify all codes against ISO 639-1 and ISO 3166-1
 4. **Generate tags**: Create hreflang tags for each page including self-referencing
 5. **Verify return tags**: Confirm all relationships are bidirectional
-6. **Add x-default**: Set fallback for each page set
+6. **Consider x-default** (optional): add it when there is a selector, an
+   auto-redirecting homepage or a sensible generic fallback; omitting it is valid
 7. **Output**: Generate implementation code (HTML, HTTP headers, or sitemap XML)
 
 ## Hreflang Sitemap Generation
@@ -208,7 +260,7 @@ Key rules:
 - Issues found: XX (Critical: X, High: X, Medium: X, Low: X)
 
 #### Validation Results
-| Language | URL | Self-Ref | Return Tags | x-default | Status |
+| Language | URL | Self-Ref | Return Tags | x-default (optional) | Status |
 |----------|-----|----------|-------------|-----------|--------|
 | en-US | https://... | ✅ | ✅ | ✅ | ✅ |
 | fr | https://... | ❌ | ⚠️ | ✅ | ❌ |
@@ -229,7 +281,7 @@ Key rules:
 When analyzing a multi-language site, go beyond technical hreflang validation to assess
 whether the content is culturally adapted for each target market.
 
-Load `references/cultural-profiles.md` for pre-built profiles (DACH, Francophone, Hispanic, Japanese).
+Load `references/cultural-profiles.md` for pre-built profiles (DACH, Francophone, Hispanic, Japanese, Indonesian).
 
 **Assessment steps:**
 1. Identify all language versions and their target markets
@@ -274,7 +326,7 @@ reference tables per locale.
 ## Reference Files
 
 Load on-demand as needed (do NOT load all at startup):
-- `references/cultural-profiles.md`: DACH, Francophone, Hispanic, Japanese cultural adaptation profiles
+- `references/cultural-profiles.md`: DACH, Francophone, Hispanic, Japanese, Indonesian cultural adaptation profiles
 - `references/locale-formats.md`: Number, date, currency, address, phone format tables per locale
 - `references/content-parity.md`: Content parity audit methodology and scoring
 - `references/machine-translation-qa.md`: Flags unreviewed machine translation, which Google's spam policy treats as scaled content abuse

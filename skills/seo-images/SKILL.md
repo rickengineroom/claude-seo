@@ -236,12 +236,34 @@ Optimize image file(s) for web and SEO. Converts to WebP/AVIF, injects IPTC
 metadata, compresses, and generates responsive variants.
 
 **Tools used (in order of preference):**
-- `exiftool` -- EXIF/IPTC/XMP read/write (install: `sudo apt install libimage-exiftool-perl`)
-- `cwebp` -- WebP conversion (install: `sudo apt install webp`)
-- ImageMagick `convert` -- Format conversion, resizing (pre-installed on most systems)
-- FFmpeg -- Fallback for format conversion (pre-installed)
 
-**Before running:** Check which tools are available with `which exiftool cwebp convert ffmpeg`.
+| Tool | Job | Windows (winget) | macOS | Debian/Ubuntu |
+|------|-----|------------------|-------|---------------|
+| `exiftool` | EXIF/IPTC/XMP read/write | `winget install --id OliverBetz.ExifTool -e` | `brew install exiftool` | `sudo apt install libimage-exiftool-perl` |
+| `cwebp` | WebP conversion | `winget install --id Google.Libwebp -e` | `brew install webp` | `sudo apt install webp` |
+| `magick` (ImageMagick 7) | Conversion, resizing, AVIF/WebP fallback | `winget install --id ImageMagick.ImageMagick -e` | `brew install imagemagick` | `sudo apt install imagemagick` |
+| `ffmpeg` | AVIF fallback, only if already installed | `winget install --id Gyan.FFmpeg -e` | `brew install ffmpeg` | `sudo apt install ffmpeg` |
+
+**Never call `convert`.** On Windows `convert` resolves to `C:\Windows\System32\convert.exe`,
+the disk utility that converts FAT volumes to NTFS. Always use `magick` (ImageMagick 7)
+and `magick identify`. On Linux systems that only have ImageMagick 6, `convert` exists
+but the commands below assume `magick`.
+
+**Before running:** check which tools are on PATH.
+- PowerShell: `Get-Command magick, exiftool, cwebp, ffmpeg -ErrorAction SilentlyContinue`
+- POSIX shells: `command -v magick exiftool cwebp ffmpeg`
+
+**Tool gate for optimise mode:**
+1. If `exiftool`, `cwebp` and `magick` are **all** missing, do not run optimise mode.
+   Report which tools are missing, print the install commands for the user's OS
+   from the table above, and stop. Do not install anything without the user's
+   go-ahead.
+2. If some are missing, run only the steps whose tool is present and list the
+   skipped steps: WebP needs `cwebp` or `magick`; AVIF needs `magick` (with AVIF
+   support) or `ffmpeg`; IPTC/XMP injection needs `exiftool` (`magick` can only
+   write a JPEG comment and basic IPTC).
+3. Work on copies in an output folder; never overwrite originals unless the user
+   asks.
 
 ### Format Conversion
 
@@ -251,16 +273,19 @@ Convert images to modern formats with metadata preservation:
 # WebP (recommended default) - with metadata preserved
 cwebp -q 82 -metadata all input.jpg -o output.webp
 
-# WebP via ImageMagick (fallback if cwebp not installed)
-convert input.jpg -quality 82 output.webp
+# WebP via ImageMagick 7 (fallback if cwebp not installed)
+magick input.jpg -quality 82 output.webp
 
-# AVIF via FFmpeg (slower encode, best compression)
+# AVIF via ImageMagick 7 (when built with AVIF support)
+magick input.jpg -quality 60 output.avif
+
+# AVIF via FFmpeg (fallback; slower encode)
 ffmpeg -i input.jpg -c:v libaom-av1 -crf 30 -still-picture 1 output.avif
 
 # Responsive variants (400w, 800w, 1200w)
-convert input.jpg -resize 400x -quality 82 image-400.webp
-convert input.jpg -resize 800x -quality 82 image-800.webp
-convert input.jpg -resize 1200x -quality 82 image-1200.webp
+magick input.jpg -resize 400x -quality 82 image-400.webp
+magick input.jpg -resize 800x -quality 82 image-800.webp
+magick input.jpg -resize 1200x -quality 82 image-1200.webp
 ```
 
 ### Metadata Injection (IPTC for Google Images Display)
@@ -294,11 +319,11 @@ exiftool -overwrite_original \
   *.jpg *.webp *.png
 ```
 
-**With ImageMagick (fallback):**
+**With ImageMagick 7 (fallback, JPEG only):**
 ```bash
-identify -verbose image.jpg | head -50
+magick identify -verbose image.jpg
 
-convert input.jpg \
+magick input.jpg \
   -set comment "Product Photo Description" \
   -set IPTC:2:80 "Brand Name Photography" \
   -set IPTC:2:116 "Copyright 2026 Brand Name" \
@@ -431,8 +456,10 @@ For maximum image SEO, run this pipeline on each image:
 | URL unreachable | Report connection error with status code. Suggest verifying URL and checking if site requires authentication. |
 | No images found on page | Report that no `<img>` elements were detected. Suggest checking if images are loaded via JavaScript or CSS background-image. |
 | Images behind CDN or authentication | Note that image files could not be directly accessed for size analysis. Report available metadata (alt text, dimensions, format from markup) and flag inaccessible resources. |
-| exiftool not installed | Fall back to ImageMagick for metadata. Recommend: `sudo apt install libimage-exiftool-perl` |
-| cwebp not installed | Fall back to ImageMagick or FFmpeg for WebP conversion. Recommend: `sudo apt install webp` |
+| exiftool not installed | Skip IPTC/XMP injection (or JPEG-only basics via `magick`). Recommend: Windows `winget install --id OliverBetz.ExifTool -e`; macOS `brew install exiftool`; Linux `sudo apt install libimage-exiftool-perl` |
+| cwebp not installed | Use `magick` for WebP if present. Recommend: Windows `winget install --id Google.Libwebp -e`; macOS `brew install webp`; Linux `sudo apt install webp` |
+| magick not installed | Do not substitute `convert` (Windows disk utility). Recommend: Windows `winget install --id ImageMagick.ImageMagick -e`; macOS `brew install imagemagick`; Linux `sudo apt install imagemagick` |
+| exiftool, cwebp and magick all missing | Stop optimise mode; report missing tools and install commands; run nothing |
 | DataForSEO MCP not available | Skip Image SERP Analysis section. Note extension is not installed. |
 
 ## Security

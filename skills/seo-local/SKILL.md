@@ -261,7 +261,7 @@ Generate `LOCAL-SEO-ANALYSIS-{domain}.md` with:
 8. **Local schema status** (present/missing/malformed + ready-to-use fix)
 9. **Location page quality** (if multi-location: unique content %, doorway risk, store locator)
 10. **Top 10 prioritized actions** (Critical > High > Medium > Low)
-11. **Limitations disclaimer**: What this analysis could NOT assess (geo-grid ranking, Domain Authority, comprehensive backlinks, GBP Insights data, real-time local pack position) and which paid tools can fill those gaps
+11. **Limitations disclaimer**: What this analysis could NOT assess (geo-grid ranking, Domain Authority, comprehensive backlinks, GBP Insights data, real-time local pack position) and which connected source fills each gap (Local Falcon first, see Live Local Data)
 
 ---
 
@@ -294,9 +294,27 @@ Generate `LOCAL-SEO-ANALYSIS-{domain}.md` with:
 
 ---
 
-## DataForSEO Integration (Optional)
+## Live Local Data
 
-If DataForSEO MCP tools are available, use `business_data_business_listings_search` for live GBP/business-listing data extraction and citation auditing across directories, and `serp_organic_live_advanced` for real-time local pack positions.
+**Local Falcon (first tier).** When `mcp__local-falcon__*` tools are loaded (method and
+field names: the `local-falcon-mcp` skill), the main session runs the free reads and
+passes them to the seo-local subagent, which has no MCP tools:
+- `listAllLocalFalconLocations`, then `getLocalFalconGbpProfile`, `getLocalFalconGbpVerificationStatus`, `listLocalFalconGbpPosts` and `listLocalFalconGbpReviews` for Google-connected locations: replaces the on-page GBP guesses with the live profile
+- `listLocalFalconScanReports` / `getLocalFalconReport` and `getLocalFalconCompetitorReport`: local pack position (SoLV, ARP, ATRP) from existing scans, with scan date, platform, grid and radius
+- `listLocalFalconReviewsAnalysisReports`: existing review benchmarks (creating one is web-UI only)
+
+Report reads are free. A new scan costs 1 credit per grid point (2 credits for a business
+search, plus AI analysis add-ons): state the estimate and get the user's approval first.
+Never call `manage*` or `update*` GBP tools from an analysis: they write to the live
+profile. For geo-grid, GBP audit and review depth, hand off to `seo-maps`.
+
+**DataForSEO (optional).** If its MCP tools are loaded, the main session can add
+`business_data_business_listings_search` for directory citation checks and
+`serp_organic_live_advanced` for a local pack snapshot. It is not required: when it is
+absent, do not tell the user to install it.
+
+When neither source is available, run the on-page analysis, label GBP and pack position
+as "not assessed", and list the Local Falcon reads that would fill the gap.
 
 ---
 

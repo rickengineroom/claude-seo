@@ -1,13 +1,15 @@
 ---
 name: seo-plan
 description: >
-  Strategic SEO planning for new or existing websites. Industry-specific
-  templates, competitive analysis, content strategy, and implementation
-  roadmap. Use when user says "SEO plan", "SEO strategy", "SEO planning",
-  "content strategy", "keyword strategy", "content calendar",
-  "site architecture", or "SEO roadmap".
+  Site architecture templates for new or existing websites, by industry:
+  URL hierarchy, page types, internal linking model, schema per page type and
+  the technical foundation. Architecture only: no schedules, roadmaps,
+  content calendars or KPI targets. Keyword, intent and result-page work runs
+  in the seo-agency foundation workstream. Use when user says "SEO plan",
+  "site architecture", "site structure", "URL structure", "information
+  architecture" or "SEO strategy template".
 user-invocable: true
-argument-hint: "[business-type]"
+argument-hint: "[business-type] [url]"
 license: MIT
 metadata:
   author: AgriciDaniel
@@ -15,69 +17,85 @@ metadata:
   category: seo
 ---
 
-# Strategic SEO Planning
+# SEO Architecture Planning
+
+This skill produces site architecture from an industry template. It does not
+decide which keywords a page targets, what intent a query has or what the
+result page rewards. That work belongs to the seo-agency foundation workstream
+(`seo-agency-foundation` skill: keyword map, two-label intent record, result-page
+evidence, cannibalisation lock), which follows the seo-agency intent protocol
+(`intent-protocol.md` in the seo-agency skill's references folder).
+
+When a foundation keyword map exists for the client, read it first and fit the
+architecture to it. When it does not, deliver the architecture with page slots
+marked "keyword: unassigned" and say that the foundation workstream fills them.
+Never invent target keywords, volumes or intent labels to fill a slot.
+
+## Scope
+
+| In scope | Out of scope (and where it goes) |
+|----------|----------------------------------|
+| URL hierarchy and folder structure | Keyword targeting per URL (seo-agency foundation) |
+| Page types and which template each uses | Search intent and result-page analysis (`/seo sxo`, `/seo cluster`) |
+| Internal linking model (hub, spoke, cross-links) | Content calendars and publishing frequency |
+| Schema type per page type | Schedules, phases, week or month plans |
+| Technical foundation requirements | Effort, hours, budgets or pricing |
+| Sitemap structure and quality gates | KPI targets and forecasts |
 
 ## Process
 
 ### 1. Discovery
-- Business type, target audience, competitors, goals
-- Current site assessment (if exists)
-- Budget and timeline constraints
-- Key performance indicators (KPIs)
+- Business type, audiences, offer, locations or markets served
+- Existing site: current URL structure, page types, CMS and its URL limits
+  (for example Shopify `/collections/` and `/products/`, Squarespace fixed
+  sitemap and robots.txt)
+- Existing foundation outputs: keyword map, cluster plan, intent records
+- Market(s) the site serves. Record them; do not default to the US.
 
-### 2. Competitive Analysis
-- Identify top 5 competitors
-- Analyze their content strategy, schema usage, technical setup
-- Identify keyword gaps and content opportunities
-- Assess their E-E-A-T signals
-- Estimate their domain authority
+### 2. Competitor Architecture Review
+- Take competitors from the foundation workstream or from Semrush
+  (`competitors_research` / organic competitors for the market), not from guesswork
+- Record how the top competitors structure URLs, page types, hubs and
+  navigation, and which page types they rank with
+- Record their schema usage and E-E-A-T signals (author pages, about, reviews)
+- Do not estimate domain authority. Third-party authority scores (Moz DA,
+  Ahrefs DR, Semrush AS) are vendor metrics, not Google signals; mention one
+  only as a labelled vendor figure when the user asks for it
 
 ### 3. Architecture Design
-- Load industry template from `assets/` directory
-- Design URL hierarchy and content pillars
-- Plan internal linking strategy
-- Sitemap structure with quality gates applied
-- Information architecture for user journeys
+- Load the industry template from `assets/`
+- Design the URL hierarchy and content pillars
+- Map each page type to a template (see `/seo content-brief` page-type templates)
+- Plan the internal linking model: hub to spoke, spoke to hub, cross-links
+  between spokes that share intent, breadcrumbs
+- Sitemap structure with quality gates applied (`/seo sitemap`)
+- Information architecture for the main user journeys
+- Pagination: each paginated page gets its own URL and self-referencing
+  canonical; link pages with crawlable `<a href>` links (see below)
 
-### 4. Content Strategy
-- Content gaps vs competitors
-- Page types and estimated counts
-- Blog/resource topics and publishing cadence
-- E-E-A-T building plan (author bios, credentials, experience signals)
-- Content calendar with priorities
+### 4. Page Inventory
+- Page types and counts that the business can actually populate with unique
+  content (no placeholder pages)
+- For location pages and programmatic patterns, apply the `/seo programmatic`
+  demand gate before adding a URL pattern
+- Sub-questions found during research become sections inside a page, not
+  separate pages (scaled content abuse risk)
 
 ### 5. Technical Foundation
-- Hosting and performance requirements
-- Schema markup plan per page type
-- Core Web Vitals baseline targets
-- AI search readiness requirements
-- Mobile-first considerations
+- Hosting and rendering requirements (server-rendered or pre-rendered content
+  for indexable pages)
+- Schema markup type per page type
+- Core Web Vitals thresholds (LCP 2.5 s, INP 200 ms, CLS 0.1 at the 75th percentile)
+- AI search readiness: crawler access, clear entity information
+- Mobile-first parity
 
-### 6. Implementation Roadmap (4 phases)
+## Pagination Guidance
 
-#### Phase 1: Foundation (weeks 1-4)
-- Technical setup and infrastructure
-- Core pages (home, about, contact, main services)
-- Essential schema implementation
-- Analytics and tracking setup
-
-#### Phase 2: Expansion (weeks 5-12)
-- Content creation for primary pages
-- Blog launch with initial posts
-- Internal linking structure
-- Local SEO setup (if applicable)
-
-#### Phase 3: Scale (weeks 13-24)
-- Advanced content development
-- Link building and outreach
-- GEO optimization
-- Performance optimization
-
-#### Phase 4: Authority (months 7-12)
-- Thought leadership content
-- PR and media mentions
-- Advanced schema implementation
-- Continuous optimization
+Google's ecommerce pagination guide (last updated 2025-12-10) says Google no
+longer uses `rel="next"` / `rel="prev"`, asks for a unique URL per page, and
+says: "Don't use the first page of a paginated sequence as the canonical page.
+Instead, give each page its own canonical URL."
+Source: https://developers.google.com/search/docs/specialty/ecommerce/pagination-and-incremental-page-loading
 
 ## Industry Templates
 
@@ -92,38 +110,48 @@ Load from `assets/` directory:
 ## Output
 
 ### Deliverables
-- `SEO-STRATEGY.md`: Complete strategic plan
-- `COMPETITOR-ANALYSIS.md`: Competitive insights
-- `CONTENT-CALENDAR.md`: Content roadmap
-- `IMPLEMENTATION-ROADMAP.md`: Phased action plan
-- `SITE-STRUCTURE.md`: URL hierarchy and architecture
+- `SITE-STRUCTURE.md`: URL hierarchy, page types, page-type template per URL
+  pattern, internal linking model, schema per page type, sitemap structure
+- `COMPETITOR-ARCHITECTURE.md`: how ranking competitors structure their sites
+- `TECHNICAL-FOUNDATION.md`: rendering, schema, CWV thresholds, crawl and
+  index requirements
 
-### KPI Targets
-| Metric | Baseline | 3 Month | 6 Month | 12 Month |
-|--------|----------|---------|---------|----------|
-| Organic Traffic | ... | ... | ... | ... |
-| Keyword Rankings | ... | ... | ... | ... |
-| Domain Authority | ... | ... | ... | ... |
-| Indexed Pages | ... | ... | ... | ... |
-| Core Web Vitals | ... | ... | ... | ... |
+No roadmap, calendar or phased plan is produced. Rick sets order of work,
+effort and pricing after scope approval.
+
+### Metrics to Baseline
+List the measures the client should track, with their source. Record the
+current baseline where data is connected. Do not set future targets.
+
+| Metric | Source |
+|--------|--------|
+| Organic clicks and impressions by page type | Search Console |
+| Organic sessions and key events by page type | GA4 |
+| Indexed vs submitted pages | Search Console page indexing report |
+| Queries ranking per page (cannibalisation check) | Search Console + Semrush |
+| Core Web Vitals pass rate (field data) | CrUX |
 
 ### Success Criteria
-- Clear, measurable goals per phase
-- Resource requirements defined
-- Dependencies identified
-- Risk mitigation strategies
+- Every indexable URL pattern has a page type, a template and a schema type
+- Every page slot is either tied to the foundation keyword map or marked
+  "keyword: unassigned"
+- Dependencies between page types (hubs before spokes, category before
+  product) are stated
+- Risks are stated (CMS URL limits, thin location pages, duplicate filters)
 
 ## DataForSEO Integration (Optional)
 
-If DataForSEO MCP tools are available, use `dataforseo_labs_google_competitors_domain` and `dataforseo_labs_google_domain_intersection` for real competitive intelligence, `dataforseo_labs_bulk_traffic_estimation` for traffic estimates, `kw_data_google_ads_search_volume` and `dataforseo_labs_bulk_keyword_difficulty` for keyword research, and `business_data_business_listings_search` for local business data.
+If DataForSEO MCP tools are available, use `dataforseo_labs_google_competitors_domain` and `dataforseo_labs_google_domain_intersection` to identify competitors whose architecture to review, and `business_data_business_listings_search` for local business data. Keyword volumes and difficulty belong to the foundation workstream.
 
 ## Error Handling
 
 | Scenario | Action |
 |----------|--------|
 | Unrecognized business type | Fall back to `generic.md` template. Inform user that no industry-specific template was found and proceed with the general business template. |
-| No website URL provided | Proceed with new-site planning mode. Skip current site assessment and competitive gap analysis that require a live URL. |
+| No website URL provided | Proceed with new-site planning mode. Skip current site assessment and competitor architecture review that require a live URL. |
 | Industry template not found | Check `assets/` directory for available templates. If the requested template file is missing, use `generic.md` and note the missing template in output. |
+| No foundation keyword map | Deliver the architecture with page slots marked "keyword: unassigned" and point to the seo-agency foundation workstream. |
+| User asks for a roadmap, calendar or KPI targets | Explain that this skill delivers architecture only; ordering, effort and targets are set by Rick after scope approval. |
 
 ## Security
 
